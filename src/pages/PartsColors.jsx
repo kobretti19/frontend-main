@@ -32,6 +32,8 @@ const PartsColors = () => {
     quantity: '0',
     min_stock_level: '5',
     order_number: '',
+    purchase_price: '0',
+    selling_price: '0',
   });
 
   const loadData = useCallback(() => {
@@ -66,6 +68,12 @@ const PartsColors = () => {
     return matchesSearch && matchesStatus;
   });
 
+  // Calculate totals
+  const totalValue = partsColors.reduce(
+    (sum, item) => sum + item.quantity * (item.purchase_price || 0),
+    0
+  );
+
   const handleCreate = async (e) => {
     e.preventDefault();
 
@@ -80,6 +88,8 @@ const PartsColors = () => {
       quantity: parseInt(formData.quantity) || 0,
       min_stock_level: parseInt(formData.min_stock_level) || 5,
       order_number: formData.order_number || null,
+      purchase_price: parseFloat(formData.purchase_price) || 0,
+      selling_price: parseFloat(formData.selling_price) || 0,
     };
 
     console.log('Sending data:', dataToSend);
@@ -93,6 +103,8 @@ const PartsColors = () => {
         quantity: '0',
         min_stock_level: '5',
         order_number: '',
+        purchase_price: '0',
+        selling_price: '0',
       });
       loadData();
     } catch (err) {
@@ -150,7 +162,7 @@ const PartsColors = () => {
             Parts Colors Inventory
           </h1>
           <p className='text-gray-600 mt-1'>
-            Manage parts with colors and quantities
+            Manage parts with colors, quantities and prices
           </p>
         </div>
         <button
@@ -162,7 +174,7 @@ const PartsColors = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className='grid grid-cols-1 md:grid-cols-4 gap-6 mb-6'>
+      <div className='grid grid-cols-1 md:grid-cols-5 gap-6 mb-6'>
         <div className='card'>
           <p className='text-sm font-medium text-gray-600'>Total Items</p>
           <p className='text-3xl font-bold text-gray-900 mt-2'>
@@ -170,7 +182,7 @@ const PartsColors = () => {
           </p>
         </div>
         <div className='card'>
-          <p className='text-sm font-medium text-gray-600'>Low Stock Items</p>
+          <p className='text-sm font-medium text-gray-600'>Low Stock</p>
           <p className='text-3xl font-bold text-yellow-600 mt-2'>
             {
               partsColors.filter((item) => item.stock_status === 'low_stock')
@@ -188,7 +200,13 @@ const PartsColors = () => {
           </p>
         </div>
         <div className='card'>
-          <p className='text-sm font-medium text-gray-600'>Filtered Results</p>
+          <p className='text-sm font-medium text-gray-600'>Total Value</p>
+          <p className='text-3xl font-bold text-green-600 mt-2'>
+            CHF {totalValue.toFixed(2)}
+          </p>
+        </div>
+        <div className='card'>
+          <p className='text-sm font-medium text-gray-600'>Filtered</p>
           <p className='text-3xl font-bold text-purple-600 mt-2'>
             {filteredPartsColors.length}
           </p>
@@ -223,12 +241,10 @@ const PartsColors = () => {
 
             {filterStatus && (
               <button
-                onClick={() => {
-                  setFilterStatus('');
-                }}
+                onClick={() => setFilterStatus('')}
                 className='btn-secondary whitespace-nowrap'
               >
-                Clear Filters
+                Clear Filter
               </button>
             )}
           </div>
@@ -247,7 +263,7 @@ const PartsColors = () => {
           </p>
           <p className='text-gray-500 mb-6'>
             {partsColors.length === 0
-              ? 'Start by adding colors to your parts with initial quantities'
+              ? 'Start by adding colors to your parts with prices'
               : 'Try adjusting your search or filters'}
           </p>
           {partsColors.length === 0 && (
@@ -294,12 +310,12 @@ const PartsColors = () => {
                 <option value=''>Select part</option>
                 {parts.map((part) => (
                   <option key={part.id} value={part.id}>
-                    {part.name} - Purchase: {part.purchase_price || 0} CHF /
-                    Sell: {part.selling_price || 0} CHF
+                    {part.name}
                   </option>
                 ))}
               </select>
             </div>
+
             <div>
               <label className='block text-sm font-medium text-gray-700 mb-2'>
                 Color *
@@ -320,37 +336,81 @@ const PartsColors = () => {
                 ))}
               </select>
             </div>
-            <div>
-              <label className='block text-sm font-medium text-gray-700 mb-2'>
-                Initial Quantity *
-              </label>
-              <input
-                type='number'
-                value={formData.quantity}
-                onChange={(e) =>
-                  setFormData({ ...formData, quantity: e.target.value })
-                }
-                className='input-field'
-                placeholder='0'
-                min='0'
-                required
-              />
+
+            <div className='grid grid-cols-2 gap-4'>
+              <div>
+                <label className='block text-sm font-medium text-gray-700 mb-2'>
+                  Purchase Price (CHF) *
+                </label>
+                <input
+                  type='number'
+                  step='0.01'
+                  value={formData.purchase_price}
+                  onChange={(e) =>
+                    setFormData({ ...formData, purchase_price: e.target.value })
+                  }
+                  className='input-field'
+                  placeholder='0.00'
+                  min='0'
+                  required
+                />
+              </div>
+              <div>
+                <label className='block text-sm font-medium text-gray-700 mb-2'>
+                  Selling Price (CHF) *
+                </label>
+                <input
+                  type='number'
+                  step='0.01'
+                  value={formData.selling_price}
+                  onChange={(e) =>
+                    setFormData({ ...formData, selling_price: e.target.value })
+                  }
+                  className='input-field'
+                  placeholder='0.00'
+                  min='0'
+                  required
+                />
+              </div>
             </div>
-            <div>
-              <label className='block text-sm font-medium text-gray-700 mb-2'>
-                Min Stock Level
-              </label>
-              <input
-                type='number'
-                value={formData.min_stock_level}
-                onChange={(e) =>
-                  setFormData({ ...formData, min_stock_level: e.target.value })
-                }
-                className='input-field'
-                placeholder='5'
-                min='0'
-              />
+
+            <div className='grid grid-cols-2 gap-4'>
+              <div>
+                <label className='block text-sm font-medium text-gray-700 mb-2'>
+                  Initial Quantity *
+                </label>
+                <input
+                  type='number'
+                  value={formData.quantity}
+                  onChange={(e) =>
+                    setFormData({ ...formData, quantity: e.target.value })
+                  }
+                  className='input-field'
+                  placeholder='0'
+                  min='0'
+                  required
+                />
+              </div>
+              <div>
+                <label className='block text-sm font-medium text-gray-700 mb-2'>
+                  Min Stock Level
+                </label>
+                <input
+                  type='number'
+                  value={formData.min_stock_level}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      min_stock_level: e.target.value,
+                    })
+                  }
+                  className='input-field'
+                  placeholder='5'
+                  min='0'
+                />
+              </div>
             </div>
+
             <div>
               <label className='block text-sm font-medium text-gray-700 mb-2'>
                 Order Number (Optional)
@@ -362,9 +422,34 @@ const PartsColors = () => {
                   setFormData({ ...formData, order_number: e.target.value })
                 }
                 className='input-field'
-                placeholder='Enter order number'
+                placeholder='Enter order/SKU number'
               />
             </div>
+
+            {/* Profit margin preview */}
+            {formData.purchase_price > 0 && formData.selling_price > 0 && (
+              <div className='bg-gray-50 p-3 rounded-lg'>
+                <p className='text-sm text-gray-600'>
+                  Profit Margin:{' '}
+                  <span className='font-semibold text-green-600'>
+                    CHF{' '}
+                    {(
+                      parseFloat(formData.selling_price) -
+                      parseFloat(formData.purchase_price)
+                    ).toFixed(2)}{' '}
+                    (
+                    {(
+                      ((parseFloat(formData.selling_price) -
+                        parseFloat(formData.purchase_price)) /
+                        parseFloat(formData.purchase_price)) *
+                      100
+                    ).toFixed(1)}
+                    %)
+                  </span>
+                </p>
+              </div>
+            )}
+
             <div className='flex justify-end space-x-3 pt-4'>
               <button
                 type='button'

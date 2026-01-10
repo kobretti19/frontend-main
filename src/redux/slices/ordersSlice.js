@@ -32,16 +32,20 @@ export const createOrder = createAsyncThunk(
 );
 
 /**
- * ✅ UPDATED: supports quantity editing on delivery
+ * ✅ FIXED: supports delivery and partial_delivered statuses
  */
 export const updateOrderStatus = createAsyncThunk(
   'orders/updateStatus',
   async ({ id, status, notes, items }, { rejectWithValue }) => {
     try {
+      // Send items for both 'delivered' and 'partial_delivered' statuses
+      const isDeliveryStatus =
+        status === 'delivered' || status === 'partial_delivered';
+
       await ordersAPI.updateStatus(id, {
         status,
         notes,
-        items: status === 'delivered' ? items : undefined,
+        items: isDeliveryStatus && items ? items : undefined,
       });
 
       return { id, status, items };
@@ -109,22 +113,18 @@ const ordersSlice = createSlice({
 
         order.status = status;
 
-        // If delivered & items were updated, refresh summary values
-        if (status === 'delivered' && Array.isArray(items)) {
-          order.total_quantity = items.reduce(
-            (sum, i) => sum + Number(i.quantity || 0),
+        // If delivered/partial_delivered & items were updated, refresh summary values
+        const isDeliveryStatus =
+          status === 'delivered' || status === 'partial_delivered';
+        if (isDeliveryStatus && Array.isArray(items)) {
+          order.total_delivered = items.reduce(
+            (sum, i) => sum + Number(i.quantity_delivered || 0),
             0
           );
-
-          if (order.total_amount != null) {
-            order.total_amount = items.reduce(
-              (sum, i) =>
-                sum +
-                Number(i.quantity || 0) *
-                  Number(i.purchase_price_at_order || 0),
-              0
-            );
-          }
+          order.total_backorder = items.reduce(
+            (sum, i) => sum + Number(i.quantity_backorder || 0),
+            0
+          );
         }
       })
 

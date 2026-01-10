@@ -28,6 +28,8 @@ const StockMovements = () => {
   const [filterType, setFilterType] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
 
+  console.log(partsColors, 'partsColors');
+
   const [addStockData, setAddStockData] = useState({
     part_color_id: '',
     quantity: '',
@@ -53,7 +55,10 @@ const StockMovements = () => {
       movement.part_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       movement.color_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       movement.notes?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      movement.user_username?.toLowerCase().includes(searchTerm.toLowerCase());
+      movement.user_username
+        ?.toLowerCase()
+        .includes(searchTerm.toLowerCase()) ||
+      movement.order_number?.toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesType = !filterType || movement.movement_type === filterType;
 
@@ -353,6 +358,9 @@ const StockMovements = () => {
                         Quantity
                       </th>
                       <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
+                        Order Number
+                      </th>
+                      <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
                         Reference
                       </th>
                       <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
@@ -369,22 +377,22 @@ const StockMovements = () => {
                   <tbody className='bg-white divide-y divide-gray-200'>
                     {filteredMovements.map((movement) => (
                       <tr key={movement.id} className='hover:bg-gray-50'>
-                        <td className='px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900'>
+                        <td className='px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900'>
                           {movement.part_name}
                         </td>
-                        <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-500'>
+                        <td className='px-4 py-4 whitespace-nowrap text-xs text-gray-500'>
                           {movement.color_name}
                         </td>
-                        <td className='px-6 py-4 whitespace-nowrap'>
+                        <td className='px-4 py-4 whitespace-nowrap'>
                           <span
-                            className={`px-2 py-1 text-xs font-medium rounded-full ${getMovementTypeColor(
+                            className={`px-2 py-1 text-xs font-normal rounded-full ${getMovementTypeColor(
                               movement.movement_type
                             )}`}
                           >
                             {movement.movement_type?.toUpperCase()}
                           </span>
                         </td>
-                        <td className='px-6 py-4 whitespace-nowrap text-sm'>
+                        <td className='px-4 py-4 whitespace-nowrap text-xs'>
                           <span
                             className={`font-semibold ${
                               movement.movement_type === 'in'
@@ -396,16 +404,19 @@ const StockMovements = () => {
                             {movement.quantity}
                           </span>
                         </td>
-                        <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-500'>
+                        <td className='px-6 py-4 whitespace-nowrap text-xs text-gray-500'>
+                          {movement.order_number || '-'}
+                        </td>
+                        <td className='px-6 py-4 whitespace-nowrap text-xs text-gray-500'>
                           {movement.reference_type || '-'}
                         </td>
-                        <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-500'>
+                        <td className='px-6 py-4 whitespace-nowrap text-xs text-gray-500'>
                           {movement.user_username || '-'}
                         </td>
-                        <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-500'>
+                        <td className='px-6 py-4 whitespace-nowrap text-xs text-gray-500'>
                           {formatDate(movement.created_at)}
                         </td>
-                        <td className='px-6 py-4 text-sm text-gray-500 max-w-xs truncate'>
+                        <td className='px-6 py-4 text-xs text-gray-500 max-w-xs truncate text-wrap'>
                           {movement.notes || '-'}
                         </td>
                       </tr>

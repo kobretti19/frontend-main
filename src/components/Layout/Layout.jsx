@@ -17,7 +17,7 @@ const Layout = () => {
       <div className='flex'>
         <Sidebar isOpen={sidebarOpen} toggleSidebar={toggleSidebar} />
 
-        <main className='flex-1 p-6 lg:ml-4'>
+        <main className='flex-1 p-6 lg:ml-2'>
           <div className='max-w-screen-xl mx-auto'>
             <Outlet />
           </div>

@@ -14,99 +14,76 @@ const PartsColorsTable = ({
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showQuantityModal, setShowQuantityModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
-
-  const [editFormData, setEditFormData] = useState({
-    part_id: '',
-    color_id: '',
+  const [editData, setEditData] = useState({});
+  const [quantityData, setQuantityData] = useState({
     quantity: '',
-    min_stock_level: '',
-    order_number: '',
+    adjustment_type: 'set',
   });
 
-  const [quantityFormData, setQuantityFormData] = useState({
-    quantity: '',
-    adjustment_type: 'add',
-  });
-
-  const handleEdit = (item) => {
+  const handleOpenEdit = (item) => {
     setSelectedItem(item);
-    setEditFormData({
-      part_id: item.part_id || '',
-      color_id: item.color_id || '',
-      quantity: item.quantity || '',
-      min_stock_level: item.min_stock_level || '',
+    setEditData({
+      part_id: item.part_id,
+      color_id: item.color_id,
+      quantity: item.quantity,
+      min_stock_level: item.min_stock_level,
       order_number: item.order_number || '',
+      purchase_price: item.purchase_price || 0,
+      selling_price: item.selling_price || 0,
     });
     setShowEditModal(true);
   };
 
-  const handleDelete = (item) => {
+  const handleOpenQuantity = (item) => {
     setSelectedItem(item);
-    setShowDeleteDialog(true);
-  };
-
-  const handleQuantityClick = (item) => {
-    setSelectedItem(item);
-    setQuantityFormData({
-      quantity: '',
-      adjustment_type: 'add',
+    setQuantityData({
+      quantity: item.quantity,
+      adjustment_type: 'set',
     });
     setShowQuantityModal(true);
   };
 
-  const handleSubmitEdit = (e) => {
+  const handleEdit = async (e) => {
     e.preventDefault();
-    onEdit(selectedItem, {
-      part_id: parseInt(editFormData.part_id),
-      color_id: parseInt(editFormData.color_id),
-      quantity: parseInt(editFormData.quantity),
-      min_stock_level: parseInt(editFormData.min_stock_level),
-      order_number: editFormData.order_number || null,
-    });
+    await onEdit(selectedItem, editData);
     setShowEditModal(false);
     setSelectedItem(null);
   };
 
-  const handleSubmitQuantity = (e) => {
+  const handleQuantityUpdate = async (e) => {
     e.preventDefault();
-    onUpdateQuantity(selectedItem, {
-      quantity: parseInt(quantityFormData.quantity),
-      adjustment_type: quantityFormData.adjustment_type,
-    });
+    await onUpdateQuantity(selectedItem, quantityData);
     setShowQuantityModal(false);
     setSelectedItem(null);
   };
 
-  const confirmDelete = () => {
-    onDelete(selectedItem);
+  const handleDelete = async () => {
+    await onDelete(selectedItem);
     setShowDeleteDialog(false);
     setSelectedItem(null);
   };
 
-  const getStockStatusColor = (status) => {
-    switch (status) {
-      case 'in_stock':
-        return 'bg-green-100 text-green-800';
-      case 'low_stock':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'out_of_stock':
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
+  const getStatusColor = (status) => {
+    const statusColors = {
+      in_stock: 'bg-green-100 text-green-800',
+      low_stock: 'bg-yellow-100 text-yellow-800',
+      out_of_stock: 'bg-red-100 text-red-800',
+    };
+    return statusColors[status] || 'bg-gray-100 text-gray-800';
   };
 
-  const getStockIcon = (status) => {
-    switch (status) {
-      case 'in_stock':
-        return '✓';
-      case 'low_stock':
-        return '⚠';
-      case 'out_of_stock':
-        return '✕';
-      default:
-        return '?';
-    }
+  const formatStatus = (status) => {
+    if (!status) return '-';
+    return status.replace('_', ' ').toUpperCase();
+  };
+
+  const calculateMargin = (purchase, selling) => {
+    const purchasePrice = parseFloat(purchase) || 0;
+    const sellingPrice = parseFloat(selling) || 0;
+    if (purchasePrice === 0) return { amount: 0, percent: 0 };
+    const margin = sellingPrice - purchasePrice;
+    const percent = (margin / purchasePrice) * 100;
+    return { amount: margin, percent };
   };
 
   return (
@@ -115,131 +92,135 @@ const PartsColorsTable = ({
         <table className='min-w-full divide-y divide-gray-200'>
           <thead className='bg-gray-50'>
             <tr>
-              <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider'>
+              <th className='px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
                 Part
               </th>
-              <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider'>
+              <th className='px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
                 Color
               </th>
-              <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider'>
-                Order Number
+              <th className='px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
+                Purchase
               </th>
-              <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider'>
-                Quantity
+              <th className='px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
+                Selling
               </th>
-              <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider'>
-                Min Level
+              <th className='px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
+                Margin
               </th>
-              <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider'>
-                Purchase Price
+              <th className='px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
+                Qty
               </th>
-              <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider'>
-                Selling Price
+              <th className='px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
+                Min
               </th>
-              <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider'>
+              <th className='px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
                 Status
               </th>
-              <th className='px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider'>
+              <th className='px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase'>
                 Actions
               </th>
             </tr>
           </thead>
           <tbody className='bg-white divide-y divide-gray-200'>
-            {partsColors.map((item) => (
-              <tr key={item.id} className='hover:bg-gray-50'>
-                <td className='px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900'>
-                  {item.part_name}
-                </td>
-                <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-500'>
-                  {item.color_name}
-                </td>
-                <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono'>
-                  {item.order_number || '-'}
-                </td>
-                <td className='px-6 py-4 whitespace-nowrap text-sm'>
-                  <button
-                    onClick={() => handleQuantityClick(item)}
-                    className='text-blue-600 hover:text-blue-900 font-bold'
-                  >
-                    {item.quantity}
-                  </button>
-                </td>
-                <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-500'>
-                  {item.min_stock_level}
-                </td>
-                <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium'>
-                  {parseFloat(item.purchase_price || 0).toFixed(2)} CHF
-                </td>
-                <td className='px-6 py-4 whitespace-nowrap text-sm text-green-600 font-medium'>
-                  {parseFloat(item.selling_price || 0).toFixed(2)} CHF
-                </td>
-                <td className='px-6 py-4 whitespace-nowrap'>
-                  <span
-                    className={`px-3 py-1 rounded-full text-xs font-semibold ${getStockStatusColor(
-                      item.stock_status
-                    )}`}
-                  >
-                    {getStockIcon(item.stock_status)}{' '}
-                    {item.stock_status?.replace('_', ' ')}
-                  </span>
-                </td>
-                <td className='px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2'>
-                  <button
-                    onClick={() => handleEdit(item)}
-                    className='text-blue-600 hover:text-blue-900'
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => handleDelete(item)}
-                    className='text-red-600 hover:text-red-900'
-                  >
-                    Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {partsColors.map((item) => {
+              const margin = calculateMargin(
+                item.purchase_price,
+                item.selling_price
+              );
+              return (
+                <tr key={item.id} className='hover:bg-gray-50'>
+                  <td className='px-4 py-3'>
+                    <p className='text-sm font-medium text-gray-900'>
+                      {item.part_name}
+                    </p>
+                    <p className='text-xs text-gray-500'>
+                      {item.category_name}
+                    </p>
+                  </td>
+                  <td className='px-4 py-3 text-sm text-gray-700'>
+                    {item.color_name}
+                  </td>
+                  <td className='px-4 py-3 text-sm text-gray-900'>
+                    CHF {parseFloat(item.purchase_price || 0).toFixed(2)}
+                  </td>
+                  <td className='px-4 py-3 text-sm text-green-600 font-medium'>
+                    CHF {parseFloat(item.selling_price || 0).toFixed(2)}
+                  </td>
+                  <td className='px-4 py-3 text-sm'>
+                    <span
+                      className={
+                        margin.amount >= 0 ? 'text-green-600' : 'text-red-600'
+                      }
+                    >
+                      {margin.amount >= 0 ? '+' : ''}
+                      {margin.percent.toFixed(1)}%
+                    </span>
+                  </td>
+                  <td className='px-4 py-3'>
+                    <button
+                      onClick={() => handleOpenQuantity(item)}
+                      className='text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline'
+                    >
+                      {item.quantity}
+                    </button>
+                  </td>
+                  <td className='px-4 py-3 text-sm text-gray-500'>
+                    {item.min_stock_level}
+                  </td>
+                  <td className='px-4 py-3'>
+                    <span
+                      className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(
+                        item.stock_status
+                      )}`}
+                    >
+                      {formatStatus(item.stock_status)}
+                    </span>
+                  </td>
+                  <td className='px-4 py-3 text-right text-sm space-x-2'>
+                    <button
+                      onClick={() => handleOpenEdit(item)}
+                      className='text-blue-600 hover:text-blue-900'
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSelectedItem(item);
+                        setShowDeleteDialog(true);
+                      }}
+                      className='text-red-600 hover:text-red-900'
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
 
-      {/* Edit Modal - No price fields */}
+      {/* Edit Modal */}
       <Modal
         isOpen={showEditModal}
         onClose={() => setShowEditModal(false)}
         title='Edit Part Color'
         size='md'
       >
-        <form onSubmit={handleSubmitEdit}>
+        <form onSubmit={handleEdit}>
           <div className='space-y-4'>
-            {/* Show current prices from part (read-only info) */}
-            {selectedItem && (
-              <div className='bg-blue-50 p-3 rounded-lg text-sm'>
-                <p className='text-blue-800'>
-                  <strong>Prices are set on the Part level.</strong> To change
-                  prices, edit the part directly.
-                </p>
-                <p className='text-blue-600 mt-1'>
-                  Current: Purchase{' '}
-                  {parseFloat(selectedItem.purchase_price || 0).toFixed(2)} CHF
-                  / Selling{' '}
-                  {parseFloat(selectedItem.selling_price || 0).toFixed(2)} CHF
-                </p>
-              </div>
-            )}
             <div>
               <label className='block text-sm font-medium text-gray-700 mb-2'>
                 Part
               </label>
               <select
-                value={editFormData.part_id}
+                value={editData.part_id}
                 onChange={(e) =>
-                  setEditFormData({ ...editFormData, part_id: e.target.value })
+                  setEditData({ ...editData, part_id: e.target.value })
                 }
                 className='input-field'
                 required
               >
-                <option value=''>Select part</option>
                 {parts.map((part) => (
                   <option key={part.id} value={part.id}>
                     {part.name}
@@ -247,19 +228,19 @@ const PartsColorsTable = ({
                 ))}
               </select>
             </div>
+
             <div>
               <label className='block text-sm font-medium text-gray-700 mb-2'>
                 Color
               </label>
               <select
-                value={editFormData.color_id}
+                value={editData.color_id}
                 onChange={(e) =>
-                  setEditFormData({ ...editFormData, color_id: e.target.value })
+                  setEditData({ ...editData, color_id: e.target.value })
                 }
                 className='input-field'
                 required
               >
-                <option value=''>Select color</option>
                 {colors.map((color) => (
                   <option key={color.id} value={color.id}>
                     {color.name}
@@ -267,55 +248,116 @@ const PartsColorsTable = ({
                 ))}
               </select>
             </div>
-            <div>
-              <label className='block text-sm font-medium text-gray-700 mb-2'>
-                Quantity
-              </label>
-              <input
-                type='number'
-                value={editFormData.quantity}
-                onChange={(e) =>
-                  setEditFormData({ ...editFormData, quantity: e.target.value })
-                }
-                className='input-field'
-                min='0'
-                required
-              />
+
+            <div className='grid grid-cols-2 gap-4'>
+              <div>
+                <label className='block text-sm font-medium text-gray-700 mb-2'>
+                  Purchase Price (CHF)
+                </label>
+                <input
+                  type='number'
+                  step='0.01'
+                  value={editData.purchase_price}
+                  onChange={(e) =>
+                    setEditData({ ...editData, purchase_price: e.target.value })
+                  }
+                  className='input-field'
+                  min='0'
+                  required
+                />
+              </div>
+              <div>
+                <label className='block text-sm font-medium text-gray-700 mb-2'>
+                  Selling Price (CHF)
+                </label>
+                <input
+                  type='number'
+                  step='0.01'
+                  value={editData.selling_price}
+                  onChange={(e) =>
+                    setEditData({ ...editData, selling_price: e.target.value })
+                  }
+                  className='input-field'
+                  min='0'
+                  required
+                />
+              </div>
             </div>
-            <div>
-              <label className='block text-sm font-medium text-gray-700 mb-2'>
-                Min Stock Level
-              </label>
-              <input
-                type='number'
-                value={editFormData.min_stock_level}
-                onChange={(e) =>
-                  setEditFormData({
-                    ...editFormData,
-                    min_stock_level: e.target.value,
-                  })
-                }
-                className='input-field'
-                min='0'
-              />
+
+            <div className='grid grid-cols-2 gap-4'>
+              <div>
+                <label className='block text-sm font-medium text-gray-700 mb-2'>
+                  Quantity
+                </label>
+                <input
+                  type='number'
+                  value={editData.quantity}
+                  onChange={(e) =>
+                    setEditData({ ...editData, quantity: e.target.value })
+                  }
+                  className='input-field'
+                  min='0'
+                  required
+                />
+              </div>
+              <div>
+                <label className='block text-sm font-medium text-gray-700 mb-2'>
+                  Min Stock Level
+                </label>
+                <input
+                  type='number'
+                  value={editData.min_stock_level}
+                  onChange={(e) =>
+                    setEditData({
+                      ...editData,
+                      min_stock_level: e.target.value,
+                    })
+                  }
+                  className='input-field'
+                  min='0'
+                />
+              </div>
             </div>
+
             <div>
               <label className='block text-sm font-medium text-gray-700 mb-2'>
                 Order Number
               </label>
               <input
                 type='text'
-                value={editFormData.order_number}
+                value={editData.order_number}
                 onChange={(e) =>
-                  setEditFormData({
-                    ...editFormData,
-                    order_number: e.target.value,
-                  })
+                  setEditData({ ...editData, order_number: e.target.value })
                 }
                 className='input-field'
-                placeholder='Enter order number'
+                placeholder='SKU/Order number'
               />
             </div>
+
+            {/* Margin preview */}
+            {editData.purchase_price > 0 && editData.selling_price > 0 && (
+              <div className='bg-gray-50 p-3 rounded-lg'>
+                <p className='text-sm text-gray-600'>
+                  Profit Margin:{' '}
+                  <span className='font-semibold text-green-600'>
+                    CHF{' '}
+                    {(
+                      parseFloat(editData.selling_price) -
+                      parseFloat(editData.purchase_price)
+                    ).toFixed(2)}{' '}
+                    (
+                    {(
+                      ((parseFloat(editData.selling_price) -
+                        parseFloat(editData.purchase_price)) /
+                        parseFloat(editData.purchase_price)) *
+                      100
+                    ).toFixed(1)}
+                    %)
+                  </span>
+                </p>
+              </div>
+            )}
+
             <div className='flex justify-end space-x-3 pt-4'>
               <button
                 type='button'
@@ -339,60 +381,55 @@ const PartsColorsTable = ({
         title='Update Quantity'
         size='sm'
       >
-        <form onSubmit={handleSubmitQuantity}>
+        <form onSubmit={handleQuantityUpdate}>
           <div className='space-y-4'>
-            {selectedItem && (
-              <div className='bg-gray-50 p-4 rounded-lg'>
-                <p className='text-sm text-gray-600'>Current Quantity</p>
-                <p className='text-3xl font-bold text-gray-900'>
-                  {selectedItem.quantity}
-                </p>
-                <p className='text-sm text-gray-600 mt-2'>
-                  {selectedItem.part_name} - {selectedItem.color_name}
-                </p>
-              </div>
-            )}
+            <div className='bg-gray-50 p-3 rounded-lg'>
+              <p className='text-sm text-gray-600'>
+                <span className='font-medium'>{selectedItem?.part_name}</span> -{' '}
+                {selectedItem?.color_name}
+              </p>
+              <p className='text-sm text-gray-600 mt-1'>
+                Current:{' '}
+                <span className='font-semibold'>{selectedItem?.quantity}</span>
+              </p>
+            </div>
+
             <div>
               <label className='block text-sm font-medium text-gray-700 mb-2'>
                 Adjustment Type
               </label>
               <select
-                value={quantityFormData.adjustment_type}
+                value={quantityData.adjustment_type}
                 onChange={(e) =>
-                  setQuantityFormData({
-                    ...quantityFormData,
+                  setQuantityData({
+                    ...quantityData,
                     adjustment_type: e.target.value,
                   })
                 }
                 className='input-field'
               >
-                <option value='add'>Add to Stock</option>
-                <option value='set'>Set Exact Amount</option>
-                <option value='remove'>Remove from Stock</option>
+                <option value='set'>Set to exact value</option>
+                <option value='add'>Add to current</option>
+                <option value='remove'>Remove from current</option>
               </select>
             </div>
+
             <div>
               <label className='block text-sm font-medium text-gray-700 mb-2'>
-                {quantityFormData.adjustment_type === 'add'
-                  ? 'Quantity to Add'
-                  : quantityFormData.adjustment_type === 'remove'
-                  ? 'Quantity to Remove'
-                  : 'New Total Quantity'}
+                Quantity
               </label>
               <input
                 type='number'
-                value={quantityFormData.quantity}
+                value={quantityData.quantity}
                 onChange={(e) =>
-                  setQuantityFormData({
-                    ...quantityFormData,
-                    quantity: e.target.value,
-                  })
+                  setQuantityData({ ...quantityData, quantity: e.target.value })
                 }
                 className='input-field'
                 min='0'
                 required
               />
             </div>
+
             <div className='flex justify-end space-x-3 pt-4'>
               <button
                 type='button'
@@ -401,8 +438,8 @@ const PartsColorsTable = ({
               >
                 Cancel
               </button>
-              <button type='submit' className='btn-success'>
-                Update Quantity
+              <button type='submit' className='btn-primary'>
+                Update
               </button>
             </div>
           </div>
@@ -413,9 +450,9 @@ const PartsColorsTable = ({
       <ConfirmDialog
         isOpen={showDeleteDialog}
         onClose={() => setShowDeleteDialog(false)}
-        onConfirm={confirmDelete}
+        onConfirm={handleDelete}
         title='Delete Part Color'
-        message={`Are you sure you want to delete "${selectedItem?.part_name} - ${selectedItem?.color_name}"? This action cannot be undone.`}
+        message={`Are you sure you want to delete "${selectedItem?.part_name} - ${selectedItem?.color_name}"?`}
       />
     </>
   );
