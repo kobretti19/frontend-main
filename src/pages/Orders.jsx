@@ -88,7 +88,7 @@ const Orders = () => {
     }
 
     const partColor = partsColors.find(
-      (pc) => pc.id === parseInt(currentItem.part_color_id)
+      (pc) => pc.id === parseInt(currentItem.part_color_id),
     );
 
     if (!partColor) {
@@ -97,7 +97,7 @@ const Orders = () => {
     }
 
     const exists = formData.items.find(
-      (item) => item.part_color_id === parseInt(currentItem.part_color_id)
+      (item) => item.part_color_id === parseInt(currentItem.part_color_id),
     );
 
     if (exists) {
@@ -178,7 +178,7 @@ const Orders = () => {
             purchase_price_at_order: item.purchase_price_at_order,
             notes: item.notes || '',
           };
-        }) || []
+        }) || [],
       );
       setDeliveryNotes('');
       setShowDeliveryModal(true);
@@ -192,12 +192,8 @@ const Orders = () => {
     const item = updated[index];
     const ordered = item.quantity_ordered;
     const alreadyDelivered = item.quantity_already_delivered || 0;
-    const maxCanReceive = ordered - alreadyDelivered;
 
-    receivingQty = Math.max(
-      0,
-      Math.min(parseInt(receivingQty) || 0, maxCanReceive)
-    );
+    receivingQty = Math.max(0, Math.min(parseInt(receivingQty) || 0));
 
     const totalDelivered = alreadyDelivered + receivingQty;
     const remaining = ordered - totalDelivered;
@@ -242,7 +238,7 @@ const Orders = () => {
     // Check if there's anything to receive
     const totalReceiving = deliveryItems.reduce(
       (sum, item) => sum + (item.quantity_receiving || 0),
-      0
+      0,
     );
     if (totalReceiving === 0) {
       alert('Please enter quantities to receive');
@@ -260,7 +256,7 @@ const Orders = () => {
       }));
 
       const hasBackorder = deliveryItems.some(
-        (item) => item.quantity_backorder > 0
+        (item) => item.quantity_backorder > 0,
       );
 
       await dispatch(
@@ -269,7 +265,7 @@ const Orders = () => {
           status: hasBackorder ? 'partial_delivered' : 'delivered',
           notes: deliveryNotes,
           items: itemsPayload,
-        })
+        }),
       ).unwrap();
 
       setShowDeliveryModal(false);
@@ -292,7 +288,7 @@ const Orders = () => {
           status: newStatus,
           notes: '',
           items: [],
-        })
+        }),
       ).unwrap();
 
       dispatch(fetchOrders());
@@ -358,7 +354,7 @@ const Orders = () => {
     return items.reduce(
       (total, item) =>
         total + (parseFloat(item.purchase_price) || 0) * item.quantity,
-      0
+      0,
     );
   };
 
@@ -368,7 +364,7 @@ const Orders = () => {
         total +
         (parseFloat(item.purchase_price_at_order) || 0) *
           item.quantity_delivered,
-      0
+      0,
     );
   };
 
@@ -544,7 +540,7 @@ const Orders = () => {
                   <td className='px-4 py-3'>
                     <span
                       className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(
-                        order.status
+                        order.status,
                       )}`}
                     >
                       {formatStatus(order.status)}
@@ -844,9 +840,6 @@ const Orders = () => {
                 </thead>
                 <tbody className='divide-y'>
                   {deliveryItems.map((item, index) => {
-                    const maxCanReceive =
-                      item.quantity_ordered -
-                      (item.quantity_already_delivered || 0);
                     const isFullyDelivered =
                       (item.quantity_already_delivered || 0) >=
                       item.quantity_ordered;
@@ -858,8 +851,8 @@ const Orders = () => {
                             item.item_status === 'cancelled'
                               ? 'bg-red-50'
                               : isFullyDelivered
-                              ? 'bg-green-50'
-                              : ''
+                                ? 'bg-green-50'
+                                : ''
                           }
                         >
                           <td className='px-3 py-2'>
@@ -893,7 +886,6 @@ const Orders = () => {
                               <input
                                 type='number'
                                 min='0'
-                                max={maxCanReceive}
                                 value={item.quantity_receiving || 0}
                                 onChange={(e) =>
                                   handleReceivingChange(index, e.target.value)
@@ -921,7 +913,7 @@ const Orders = () => {
                                 handleItemStatusChange(index, e.target.value)
                               }
                               className={`text-xs px-2 py-1 rounded-full border-0 ${getItemStatusColor(
-                                item.item_status
+                                item.item_status,
                               )}`}
                               disabled={isFullyDelivered}
                             >
@@ -956,7 +948,7 @@ const Orders = () => {
                 <p className='text-xl font-bold text-gray-900'>
                   {deliveryItems.reduce(
                     (sum, item) => sum + item.quantity_ordered,
-                    0
+                    0,
                   )}
                 </p>
               </div>
@@ -965,7 +957,7 @@ const Orders = () => {
                 <p className='text-xl font-bold text-blue-600'>
                   {deliveryItems.reduce(
                     (sum, item) => sum + (item.quantity_already_delivered || 0),
-                    0
+                    0,
                   )}
                 </p>
               </div>
@@ -974,7 +966,7 @@ const Orders = () => {
                 <p className='text-xl font-bold text-green-600'>
                   {deliveryItems.reduce(
                     (sum, item) => sum + (item.quantity_receiving || 0),
-                    0
+                    0,
                   )}
                 </p>
               </div>
@@ -983,7 +975,7 @@ const Orders = () => {
                 <p className='text-xl font-bold text-orange-600'>
                   {deliveryItems.reduce(
                     (sum, item) => sum + item.quantity_backorder,
-                    0
+                    0,
                   )}
                 </p>
               </div>
@@ -1032,7 +1024,7 @@ const Orders = () => {
                 <p className='text-xs text-gray-600'>Status</p>
                 <span
                   className={`inline-block mt-1 px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(
-                    orderDetails.status
+                    orderDetails.status,
                   )}`}
                 >
                   {formatStatus(orderDetails.status)}
@@ -1101,7 +1093,7 @@ const Orders = () => {
                         <td className='px-3 py-2 text-center'>
                           <span
                             className={`px-2 py-1 text-xs rounded-full ${getItemStatusColor(
-                              item.item_status
+                              item.item_status,
                             )}`}
                           >
                             {formatStatus(item.item_status)}

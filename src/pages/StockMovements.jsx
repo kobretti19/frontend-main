@@ -28,8 +28,6 @@ const StockMovements = () => {
   const [filterType, setFilterType] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
 
-  console.log(partsColors, 'partsColors');
-
   const [addStockData, setAddStockData] = useState({
     part_color_id: '',
     quantity: '',
@@ -101,10 +99,12 @@ const StockMovements = () => {
 
   const handleAdjustStock = async (e) => {
     e.preventDefault();
+
     try {
       await dispatch(adjustStock(adjustStockData)).unwrap();
       setShowAdjustStockModal(false);
       setAdjustStockData({ part_color_id: '', quantity: '', notes: '' });
+
       dispatch(fetchStockMovements());
       dispatch(fetchStockLevels());
       dispatch(fetchStockAlerts());
@@ -157,10 +157,10 @@ const StockMovements = () => {
     .filter((m) => m.movement_type === 'out')
     .reduce((sum, m) => sum + m.quantity, 0);
   const lowStockCount = levels.filter(
-    (l) => l.stock_status === 'low' || l.stock_status === 'low_stock'
+    (l) => l.stock_status === 'low' || l.stock_status === 'low_stock',
   ).length;
   const outOfStockCount = levels.filter(
-    (l) => l.stock_status === 'critical' || l.stock_status === 'out_of_stock'
+    (l) => l.stock_status === 'critical' || l.stock_status === 'out_of_stock',
   ).length;
 
   return (
@@ -386,7 +386,7 @@ const StockMovements = () => {
                         <td className='px-4 py-4 whitespace-nowrap'>
                           <span
                             className={`px-2 py-1 text-xs font-normal rounded-full ${getMovementTypeColor(
-                              movement.movement_type
+                              movement.movement_type,
                             )}`}
                           >
                             {movement.movement_type?.toUpperCase()}
@@ -493,7 +493,7 @@ const StockMovements = () => {
                         <td className='px-6 py-4 whitespace-nowrap'>
                           <span
                             className={`px-2 py-1 text-xs font-medium rounded-full ${getStockStatusColor(
-                              level.stock_status
+                              level.stock_status,
                             )}`}
                           >
                             {level.stock_status
@@ -597,7 +597,7 @@ const StockMovements = () => {
                         <td className='px-6 py-4 whitespace-nowrap'>
                           <span
                             className={`px-2 py-1 text-xs font-medium rounded-full ${getStockStatusColor(
-                              alert.stock_status
+                              alert.stock_status,
                             )}`}
                           >
                             {alert.stock_status
@@ -725,7 +725,7 @@ const StockMovements = () => {
                 value={adjustStockData.part_color_id}
                 onChange={(e) => {
                   const pc = partsColors.find(
-                    (p) => p.id === parseInt(e.target.value)
+                    (p) => p.id === parseInt(e.target.value),
                   );
                   setAdjustStockData({
                     ...adjustStockData,
