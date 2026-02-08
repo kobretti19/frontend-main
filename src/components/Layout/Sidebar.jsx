@@ -1,4 +1,3 @@
-import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
 const Sidebar = ({ isOpen, toggleSidebar }) => {
@@ -9,13 +8,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
     { path: '/equipment', label: 'Equipment', icon: '🔧' },
     { path: '/orders', label: 'Orders', icon: '🛒' },
     { path: '/parts', label: 'Parts', icon: '⚙️' },
-    { path: '/parts-categories', label: 'Parts Categories', icon: '📑' },
-    { path: '/parts-colors', label: 'Add Quantity', icon: '🔩' },
     { path: '/stock-movements', label: 'Stock Movements', icon: '📈' },
-    { path: '/inventory', label: 'Inventory', icon: '📦' },
-    { path: '/brands', label: 'Brands', icon: '🏷️' },
-    { path: '/categories', label: 'Categories', icon: '📂' },
-    { path: '/colors', label: 'Colors', icon: '🖌️' },
     { path: '/equipment-templates', label: 'Templates', icon: '📋' },
   ];
 

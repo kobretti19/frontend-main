@@ -5,55 +5,133 @@ import {
   createTemplate,
   updateTemplate,
   deleteTemplate,
+  createEquipmentFromTemplate,
 } from '../redux/slices/equipmentTemplatesSlice';
-import { fetchCategories } from '../redux/slices/categoriesSlice';
-import { fetchBrands } from '../redux/slices/brandsSlice';
-import Modal from '../components/Common/Modal';
-import ConfirmDialog from '../components/Common/ConfirmDialog';
-import LoadingSpinner from '../components/Common/LoadingSpinner';
+import { fetchParts } from '../redux/slices/partsSlice';
+import { fetchBrands, fetchCategories } from '../redux/slices/equipmentSlice';
+import { equipmentTemplatesAPI } from '../api/api';
+import {
+  Modal,
+  ConfirmDialog,
+  LoadingSpinner,
+  StatsCard,
+  EmptyState,
+  DatalistInput,
+  PartSelector,
+  PartsListTable,
+} from '../components/Common';
 import { useSearch } from '../context/SearchContext';
 
 const EquipmentTemplates = () => {
   const dispatch = useDispatch();
   const { searchTerm } = useSearch();
 
-  const templates = useSelector((state) => state.equipmentTemplates?.items || []);
-  const loading = useSelector((state) => state.equipmentTemplates?.loading || false);
-  const categories = useSelector((state) => state.categories?.items || []);
-  const brands = useSelector((state) => state.brands?.items || []);
+  // Redux state
+  const { items: templates, loading } = useSelector(
+    (state) => state.equipmentTemplates,
+  );
+  const { items: parts } = useSelector((state) => state.parts);
+  const { brands, categories } = useSelector((state) => state.equipment);
 
+  // Modals
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
-  const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [showCreateEquipmentModal, setShowCreateEquipmentModal] =
+    useState(false);
 
-  const [formData, setFormData] = useState({
+  // State
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [equipmentSerial, setEquipmentSerial] = useState('');
+  const [isFetching, setIsFetching] = useState(false); // Loading state for getById
+
+  // Form
+  const initialFormData = {
     name: '',
     description: '',
-    category_id: '',
-    brand_id: '',
+    brand: '',
+    category: '',
     parts_data: [],
-  });
+  };
+  const [formData, setFormData] = useState(initialFormData);
 
   useEffect(() => {
     dispatch(fetchTemplates());
-    dispatch(fetchCategories());
+    dispatch(fetchParts());
     dispatch(fetchBrands());
+    dispatch(fetchCategories());
   }, [dispatch]);
 
-  // Filter templates
   const filteredTemplates = templates.filter((template) => {
     return (
       template.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       template.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      template.category_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      template.brand_name?.toLowerCase().includes(searchTerm.toLowerCase())
+      template.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      template.category?.toLowerCase().includes(searchTerm.toLowerCase())
     );
   });
 
+  const resetForm = () => setFormData(initialFormData);
+
+  // --- CHANGED: Handlers now fetch data by ID ---
+
+  const openEditModal = async (template) => {
+    setIsFetching(true);
+    try {
+      const response = await equipmentTemplatesAPI.getById(template.id);
+      const fullData = response.data.data;
+
+      // Safely handle parts_data if it comes back as a string from DB
+      const parsedParts =
+        typeof fullData.parts_data === 'string'
+          ? JSON.parse(fullData.parts_data)
+          : fullData.parts_data || [];
+
+      setSelectedTemplate(fullData);
+      setFormData({
+        name: fullData.name || '',
+        description: fullData.description || '',
+        brand: fullData.brand || '',
+        category: fullData.category || '',
+        parts_data: parsedParts,
+      });
+      setShowEditModal(true);
+    } catch (err) {
+      alert('Error fetching template details: ' + err.message);
+    } finally {
+      setIsFetching(false);
+    }
+  };
+
+  const openDetailsModal = async (template) => {
+    setIsFetching(true);
+    try {
+      const response = await equipmentTemplatesAPI.getById(template.id);
+      const fullData = response.data.data;
+
+      // Parse parts for the detail table
+      if (typeof fullData.parts_data === 'string') {
+        fullData.parts_data = JSON.parse(fullData.parts_data);
+      }
+
+      setSelectedTemplate(fullData);
+      setShowDetailsModal(true);
+    } catch (err) {
+      alert('Error loading details: ' + err.message);
+    } finally {
+      setIsFetching(false);
+    }
+  };
+
+  // --- Standard Logic ---
+
   const handleCreate = async (e) => {
     e.preventDefault();
+    if (formData.parts_data.length === 0) {
+      alert('Please add at least one part');
+      return;
+    }
     try {
       await dispatch(createTemplate(formData)).unwrap();
       setShowCreateModal(false);
@@ -66,7 +144,9 @@ const EquipmentTemplates = () => {
   const handleEdit = async (e) => {
     e.preventDefault();
     try {
-      await dispatch(updateTemplate({ id: selectedTemplate.id, data: formData })).unwrap();
+      await dispatch(
+        updateTemplate({ id: selectedTemplate.id, data: formData }),
+      ).unwrap();
       setShowEditModal(false);
       setSelectedTemplate(null);
       resetForm();
@@ -85,30 +165,37 @@ const EquipmentTemplates = () => {
     }
   };
 
-  const openEditModal = (template) => {
-    setSelectedTemplate(template);
-    setFormData({
-      name: template.name || '',
-      description: template.description || '',
-      category_id: template.category_id || '',
-      brand_id: template.brand_id || '',
-      parts_data: template.parts_data || [],
-    });
-    setShowEditModal(true);
+  const handleCreateEquipment = async () => {
+    try {
+      await dispatch(
+        createEquipmentFromTemplate({
+          templateId: selectedTemplate.id,
+          data: { serial_number: equipmentSerial },
+        }),
+      ).unwrap();
+      alert('Equipment created successfully!');
+      setShowCreateEquipmentModal(false);
+      setEquipmentSerial('');
+      setSelectedTemplate(null);
+    } catch (err) {
+      alert('Failed to create equipment: ' + err);
+    }
   };
 
-  const openDetailsModal = (template) => {
+  const openCreateEquipmentModal = (template) => {
     setSelectedTemplate(template);
-    setShowDetailsModal(true);
+    setEquipmentSerial('');
+    setShowCreateEquipmentModal(true);
   };
 
-  const resetForm = () => {
+  const addPart = (part) => {
+    setFormData({ ...formData, parts_data: [...formData.parts_data, part] });
+  };
+
+  const removePart = (index) => {
     setFormData({
-      name: '',
-      description: '',
-      category_id: '',
-      brand_id: '',
-      parts_data: [],
+      ...formData,
+      parts_data: formData.parts_data.filter((_, i) => i !== index),
     });
   };
 
@@ -121,66 +208,63 @@ const EquipmentTemplates = () => {
     });
   };
 
+  const uniqueCategories = new Set(
+    templates.filter((t) => t.category).map((t) => t.category),
+  ).size;
+
   return (
     <div>
+      {/* Global Fetching Overlay */}
+      {isFetching && (
+        <div className='fixed inset-0 bg-white/60 z-[9999] flex items-center justify-center'>
+          <LoadingSpinner />
+        </div>
+      )}
+
       <div className='flex justify-between items-center mb-6'>
         <div>
-          <h1 className='text-3xl font-bold text-gray-900'>Equipment Templates</h1>
-          <p className='text-gray-600 mt-1'>Manage reusable equipment configurations</p>
+          <h1 className='text-3xl font-bold text-gray-900'>
+            Equipment Templates
+          </h1>
+          <p className='text-gray-600 mt-1'>
+            Manage reusable equipment configurations
+          </p>
         </div>
-        <button onClick={() => setShowCreateModal(true)} className='btn-primary'>
+        <button
+          onClick={() => setShowCreateModal(true)}
+          className='btn-primary'
+        >
           + Create Template
         </button>
       </div>
 
-      {/* Stats Cards */}
       <div className='grid grid-cols-1 md:grid-cols-3 gap-6 mb-6'>
-        <div className='card'>
-          <p className='text-sm font-medium text-gray-600'>Total Templates</p>
-          <p className='text-3xl font-bold text-gray-900 mt-2'>{templates.length}</p>
-        </div>
-        <div className='card'>
-          <p className='text-sm font-medium text-gray-600'>Categories Used</p>
-          <p className='text-3xl font-bold text-blue-600 mt-2'>
-            {new Set(templates.filter(t => t.category_id).map(t => t.category_id)).size}
-          </p>
-        </div>
-        <div className='card'>
-          <p className='text-sm font-medium text-gray-600'>Filtered Results</p>
-          <p className='text-3xl font-bold text-purple-600 mt-2'>{filteredTemplates.length}</p>
-        </div>
-      </div>
-
-      {/* Filters */}
-      <div className='card mb-6'>
-        <div className='flex items-center'>
-          {searchTerm && (
-            <p className='text-sm text-gray-600'>
-              Searching for: <span className='font-medium text-gray-900'>"{searchTerm}"</span>
-            </p>
-          )}
-        </div>
+        <StatsCard
+          label='Total Templates'
+          value={templates.length}
+          color='gray'
+        />
+        <StatsCard
+          label='Categories Used'
+          value={uniqueCategories}
+          color='blue'
+        />
+        <StatsCard
+          label='Filtered Results'
+          value={filteredTemplates.length}
+          color='purple'
+        />
       </div>
 
       {loading ? (
         <LoadingSpinner />
       ) : filteredTemplates.length === 0 ? (
-        <div className='card text-center py-12'>
-          <div className='text-6xl mb-4'>📋</div>
-          <p className='text-xl font-semibold text-gray-900 mb-2'>
-            {templates.length === 0 ? 'No Templates Yet' : 'No Results Found'}
-          </p>
-          <p className='text-gray-500 mb-6'>
-            {templates.length === 0
-              ? 'Create templates to quickly build new equipment with predefined parts'
-              : 'Try adjusting your search'}
-          </p>
-          {templates.length === 0 && (
-            <button onClick={() => setShowCreateModal(true)} className='btn-primary'>
-              + Create Template
-            </button>
-          )}
-        </div>
+        <EmptyState
+          icon='📋'
+          title='No Templates Yet'
+          onAction={() => setShowCreateModal(true)}
+          hasItems={templates.length > 0}
+        />
       ) : (
         <div className='card overflow-hidden'>
           <table className='min-w-full divide-y divide-gray-200'>
@@ -190,19 +274,10 @@ const EquipmentTemplates = () => {
                   Name
                 </th>
                 <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
-                  Description
-                </th>
-                <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
                   Category
                 </th>
                 <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
-                  Brand
-                </th>
-                <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
                   Parts
-                </th>
-                <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
-                  Created
                 </th>
                 <th className='px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase'>
                   Actions
@@ -215,24 +290,21 @@ const EquipmentTemplates = () => {
                   <td className='px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900'>
                     {template.name}
                   </td>
-                  <td className='px-6 py-4 text-sm text-gray-500 max-w-xs truncate'>
-                    {template.description || '-'}
-                  </td>
                   <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-500'>
-                    {template.category_name || '-'}
-                  </td>
-                  <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-500'>
-                    {template.brand_name || '-'}
+                    {template.category || '-'}
                   </td>
                   <td className='px-6 py-4 whitespace-nowrap text-sm'>
                     <span className='px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium'>
                       {template.parts_data?.length || 0} parts
                     </span>
                   </td>
-                  <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-500'>
-                    {formatDate(template.created_at)}
-                  </td>
                   <td className='px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2'>
+                    <button
+                      onClick={() => openCreateEquipmentModal(template)}
+                      className='text-green-600 hover:text-green-900'
+                    >
+                      🔧 Use
+                    </button>
                     <button
                       onClick={() => openDetailsModal(template)}
                       className='text-gray-600 hover:text-gray-900'
@@ -262,93 +334,94 @@ const EquipmentTemplates = () => {
         </div>
       )}
 
+      {/* --- MODALS REMAIN LARGELY THE SAME BUT USE FETCHED SELECTEDTEMPLATE --- */}
+
       {/* Create Modal */}
       <Modal
         isOpen={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
+        onClose={() => {
+          setShowCreateModal(false);
+          resetForm();
+        }}
         title='Create Equipment Template'
-        size='md'
+        size='lg'
       >
-        <form onSubmit={handleCreate}>
-          <div className='space-y-4'>
-            <div>
+        <form onSubmit={handleCreate} className='space-y-4'>
+          <div className='grid grid-cols-2 gap-4'>
+            <div className='col-span-2'>
               <label className='block text-sm font-medium text-gray-700 mb-2'>
                 Template Name *
               </label>
               <input
                 type='text'
                 value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, name: e.target.value })
+                }
                 className='input-field'
-                placeholder='e.g., Standard Amplifier Setup'
                 required
               />
             </div>
-            <div>
-              <label className='block text-sm font-medium text-gray-700 mb-2'>
-                Description
-              </label>
-              <textarea
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                className='input-field'
-                rows='3'
-                placeholder='Describe this template...'
+            <DatalistInput
+              label='Category'
+              value={formData.category}
+              onChange={(v) => setFormData({ ...formData, category: v })}
+              options={categories}
+            />
+            <DatalistInput
+              label='Brand'
+              value={formData.brand}
+              onChange={(v) => setFormData({ ...formData, brand: v })}
+              options={brands}
+            />
+          </div>
+          <div>
+            <label className='block text-sm font-medium text-gray-700 mb-2'>
+              Description
+            </label>
+            <textarea
+              value={formData.description}
+              onChange={(e) =>
+                setFormData({ ...formData, description: e.target.value })
+              }
+              className='input-field'
+              rows='2'
+            />
+          </div>
+          <div>
+            <h3 className='text-lg font-semibold mb-3'>
+              Parts ({formData.parts_data.length})
+            </h3>
+            <PartSelector
+              parts={parts}
+              onAdd={addPart}
+              existingParts={formData.parts_data}
+            />
+            <div className='mt-4'>
+              <PartsListTable
+                parts={formData.parts_data}
+                onRemove={removePart}
               />
             </div>
-            <div className='grid grid-cols-2 gap-4'>
-              <div>
-                <label className='block text-sm font-medium text-gray-700 mb-2'>
-                  Default Category
-                </label>
-                <select
-                  value={formData.category_id}
-                  onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
-                  className='input-field'
-                >
-                  <option value=''>Select category</option>
-                  {categories.map((cat) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className='block text-sm font-medium text-gray-700 mb-2'>
-                  Default Brand
-                </label>
-                <select
-                  value={formData.brand_id}
-                  onChange={(e) => setFormData({ ...formData, brand_id: e.target.value })}
-                  className='input-field'
-                >
-                  <option value=''>Select brand</option>
-                  {brands.map((brand) => (
-                    <option key={brand.id} value={brand.id}>
-                      {brand.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div className='bg-yellow-50 p-4 rounded-lg'>
-              <p className='text-sm text-yellow-800'>
-                <strong>Tip:</strong> To create a template with parts, first create equipment with the desired parts configuration, then use the "Save as Template" button on the Equipment page.
-              </p>
-            </div>
-            <div className='flex justify-end space-x-3 pt-4'>
-              <button
-                type='button'
-                onClick={() => setShowCreateModal(false)}
-                className='btn-secondary'
-              >
-                Cancel
-              </button>
-              <button type='submit' className='btn-primary'>
-                Create Template
-              </button>
-            </div>
+          </div>
+          <div className='flex justify-end space-x-3 pt-4 border-t'>
+            <button
+              type='button'
+              onClick={() => {
+                setShowCreateModal(false);
+                resetForm();
+              }}
+              className='btn-secondary'
+            >
+              Cancel
+            </button>
+            <button
+              type='submit'
+              className='btn-primary'
+              disabled={formData.parts_data.length === 0}
+            >
+              Create Template
+            </button>
           </div>
         </form>
       </Modal>
@@ -356,83 +429,58 @@ const EquipmentTemplates = () => {
       {/* Edit Modal */}
       <Modal
         isOpen={showEditModal}
-        onClose={() => setShowEditModal(false)}
+        onClose={() => {
+          setShowEditModal(false);
+          resetForm();
+        }}
         title='Edit Template'
-        size='md'
+        size='lg'
       >
-        <form onSubmit={handleEdit}>
-          <div className='space-y-4'>
-            <div>
+        <form onSubmit={handleEdit} className='space-y-4'>
+          {/* ... Edit Form fields using formData ... */}
+          <div className='grid grid-cols-2 gap-4'>
+            <div className='col-span-2'>
               <label className='block text-sm font-medium text-gray-700 mb-2'>
                 Template Name *
               </label>
               <input
                 type='text'
                 value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, name: e.target.value })
+                }
                 className='input-field'
                 required
               />
             </div>
-            <div>
-              <label className='block text-sm font-medium text-gray-700 mb-2'>
-                Description
-              </label>
-              <textarea
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                className='input-field'
-                rows='3'
+          </div>
+          <div>
+            <h3 className='text-lg font-semibold mb-3'>
+              Parts ({formData.parts_data.length})
+            </h3>
+            <PartSelector
+              parts={parts}
+              onAdd={addPart}
+              existingParts={formData.parts_data}
+            />
+            <div className='mt-4'>
+              <PartsListTable
+                parts={formData.parts_data}
+                onRemove={removePart}
               />
             </div>
-            <div className='grid grid-cols-2 gap-4'>
-              <div>
-                <label className='block text-sm font-medium text-gray-700 mb-2'>
-                  Default Category
-                </label>
-                <select
-                  value={formData.category_id}
-                  onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
-                  className='input-field'
-                >
-                  <option value=''>Select category</option>
-                  {categories.map((cat) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className='block text-sm font-medium text-gray-700 mb-2'>
-                  Default Brand
-                </label>
-                <select
-                  value={formData.brand_id}
-                  onChange={(e) => setFormData({ ...formData, brand_id: e.target.value })}
-                  className='input-field'
-                >
-                  <option value=''>Select brand</option>
-                  {brands.map((brand) => (
-                    <option key={brand.id} value={brand.id}>
-                      {brand.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div className='flex justify-end space-x-3 pt-4'>
-              <button
-                type='button'
-                onClick={() => setShowEditModal(false)}
-                className='btn-secondary'
-              >
-                Cancel
-              </button>
-              <button type='submit' className='btn-primary'>
-                Save Changes
-              </button>
-            </div>
+          </div>
+          <div className='flex justify-end space-x-3 pt-4 border-t'>
+            <button
+              type='button'
+              onClick={() => setShowEditModal(false)}
+              className='btn-secondary'
+            >
+              Cancel
+            </button>
+            <button type='submit' className='btn-primary'>
+              Save Changes
+            </button>
           </div>
         </form>
       </Modal>
@@ -452,72 +500,19 @@ const EquipmentTemplates = () => {
                 <p className='font-medium'>{selectedTemplate.name}</p>
               </div>
               <div>
-                <p className='text-sm text-gray-500'>Created By</p>
-                <p className='font-medium'>{selectedTemplate.created_by_username || '-'}</p>
-              </div>
-              <div>
                 <p className='text-sm text-gray-500'>Category</p>
-                <p className='font-medium'>{selectedTemplate.category_name || '-'}</p>
-              </div>
-              <div>
-                <p className='text-sm text-gray-500'>Brand</p>
-                <p className='font-medium'>{selectedTemplate.brand_name || '-'}</p>
+                <p className='font-medium'>
+                  {selectedTemplate.category || '-'}
+                </p>
               </div>
             </div>
-
-            {selectedTemplate.description && (
-              <div>
-                <p className='text-sm text-gray-500'>Description</p>
-                <p className='font-medium'>{selectedTemplate.description}</p>
-              </div>
-            )}
-
             <div>
               <p className='text-sm text-gray-500 mb-3'>Parts Configuration</p>
-              {selectedTemplate.parts_data?.length > 0 ? (
-                <div className='bg-gray-50 rounded-lg overflow-hidden'>
-                  <table className='min-w-full divide-y divide-gray-200'>
-                    <thead className='bg-gray-100'>
-                      <tr>
-                        <th className='px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase'>
-                          Part
-                        </th>
-                        <th className='px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase'>
-                          Color
-                        </th>
-                        <th className='px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase'>
-                          Quantity
-                        </th>
-                        <th className='px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase'>
-                          Notes
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className='divide-y divide-gray-200'>
-                      {selectedTemplate.parts_data.map((part, index) => (
-                        <tr key={index}>
-                          <td className='px-4 py-2 text-sm font-medium text-gray-900'>
-                            {part.part_name}
-                          </td>
-                          <td className='px-4 py-2 text-sm text-gray-500'>
-                            {part.color_name}
-                          </td>
-                          <td className='px-4 py-2 text-sm text-gray-500'>
-                            {part.quantity}
-                          </td>
-                          <td className='px-4 py-2 text-sm text-gray-500'>
-                            {part.notes || '-'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className='text-gray-500 italic'>No parts configured</p>
-              )}
+              <PartsListTable
+                parts={selectedTemplate.parts_data || []}
+                showRemove={false}
+              />
             </div>
-
             <div className='flex justify-end'>
               <button
                 onClick={() => setShowDetailsModal(false)}
@@ -530,14 +525,36 @@ const EquipmentTemplates = () => {
         )}
       </Modal>
 
-      {/* Delete Confirmation */}
       <ConfirmDialog
         isOpen={showDeleteDialog}
         onClose={() => setShowDeleteDialog(false)}
         onConfirm={handleDelete}
         title='Delete Template'
-        message={`Are you sure you want to delete "${selectedTemplate?.name}"? This action cannot be undone.`}
+        message={`Are you sure you want to delete "${selectedTemplate?.name}"?`}
       />
+
+      <Modal
+        isOpen={showCreateEquipmentModal}
+        onClose={() => setShowCreateEquipmentModal(false)}
+        title='Use Template'
+        size='sm'
+      >
+        <div className='space-y-4'>
+          <input
+            type='text'
+            value={equipmentSerial}
+            onChange={(e) => setEquipmentSerial(e.target.value)}
+            className='input-field'
+            placeholder='Serial Number'
+          />
+          <button
+            onClick={handleCreateEquipment}
+            className='btn-primary w-full'
+          >
+            Create Equipment
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 };

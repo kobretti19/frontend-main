@@ -63,14 +63,9 @@ const Navbar = ({ toggleSidebar }) => {
     const path = location.pathname;
     if (path === '/equipment') return 'Search equipment...';
     if (path === '/parts') return 'Search parts...';
-    if (path === '/parts-colors') return 'Search parts colors...';
     if (path === '/orders') return 'Search orders...';
-    if (path === '/inventory') return 'Search inventory...';
-    if (path === '/brands') return 'Search brands...';
-    if (path === '/categories') return 'Search categories...';
-    if (path === '/colors') return 'Search colors...';
-    if (path === '/parts-categories') return 'Search parts categories...';
     if (path === '/stock-movements') return 'Search stock movements...';
+    if (path === '/equipment-templates') return 'Search templates...';
     return 'Search... (Ctrl+K)';
   };
 
@@ -79,14 +74,9 @@ const Navbar = ({ toggleSidebar }) => {
     const searchablePages = [
       '/equipment',
       '/parts',
-      '/parts-colors',
       '/orders',
-      '/inventory',
-      '/brands',
-      '/categories',
-      '/colors',
-      '/parts-categories',
       '/stock-movements',
+      '/equipment-templates',
     ];
     return searchablePages.includes(location.pathname);
   };

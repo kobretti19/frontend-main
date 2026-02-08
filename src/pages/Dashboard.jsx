@@ -1,35 +1,21 @@
 import React, { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
-import { fetchBrands } from '../redux/slices/brandsSlice';
-import { fetchCategories } from '../redux/slices/categoriesSlice';
-import { fetchColors } from '../redux/slices/colorsSlice';
 import { fetchParts } from '../redux/slices/partsSlice';
 import { fetchEquipment } from '../redux/slices/equipmentSlice';
 
 const Dashboard = () => {
   const dispatch = useDispatch();
-  const brands = useSelector((state) => state.brands.items || []);
-  const categories = useSelector((state) => state.categories.items || []);
-  const colors = useSelector((state) => state.colors.items || []);
+
   const parts = useSelector((state) => state.parts.items || []);
   const equipment = useSelector((state) => state.equipment.items || []);
 
   useEffect(() => {
-    dispatch(fetchBrands()).catch((err) =>
-      console.error('Failed to fetch brands:', err)
-    );
-    dispatch(fetchCategories()).catch((err) =>
-      console.error('Failed to fetch categories:', err)
-    );
-    dispatch(fetchColors()).catch((err) =>
-      console.error('Failed to fetch colors:', err)
-    );
     dispatch(fetchParts()).catch((err) =>
-      console.error('Failed to fetch parts:', err)
+      console.error('Failed to fetch parts:', err),
     );
     dispatch(fetchEquipment()).catch((err) =>
-      console.error('Failed to fetch equipment:', err)
+      console.error('Failed to fetch equipment:', err),
     );
   }, [dispatch]);
 
@@ -47,20 +33,6 @@ const Dashboard = () => {
       icon: '⚙️',
       color: 'bg-green-500',
       link: '/parts',
-    },
-    {
-      name: 'Total Brands',
-      value: brands.length,
-      icon: '🏷️',
-      color: 'bg-purple-500',
-      link: '/brands',
-    },
-    {
-      name: 'Total Categories',
-      value: categories.length,
-      icon: '📂',
-      color: 'bg-orange-500',
-      link: '/categories',
     },
   ];
 
@@ -126,55 +98,16 @@ const Dashboard = () => {
             <h3 className='text-sm font-medium text-gray-700 mb-2'>
               Recent Brands
             </h3>
-            <div className='flex flex-wrap gap-2'>
-              {brands.slice(0, 5).map((brand) => (
-                <span
-                  key={brand.id}
-                  className='px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm'
-                >
-                  {brand.name}
-                </span>
-              ))}
-              {brands.length === 0 && (
-                <span className='text-gray-500 text-sm'>No brands yet</span>
-              )}
-            </div>
           </div>
           <div>
             <h3 className='text-sm font-medium text-gray-700 mb-2'>
               Recent Categories
             </h3>
-            <div className='flex flex-wrap gap-2'>
-              {categories.slice(0, 5).map((category) => (
-                <span
-                  key={category.id}
-                  className='px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm'
-                >
-                  {category.name}
-                </span>
-              ))}
-              {categories.length === 0 && (
-                <span className='text-gray-500 text-sm'>No categories yet</span>
-              )}
-            </div>
           </div>
           <div>
             <h3 className='text-sm font-medium text-gray-700 mb-2'>
               Recent Colors
             </h3>
-            <div className='flex flex-wrap gap-2'>
-              {colors.slice(0, 5).map((color) => (
-                <span
-                  key={color.id}
-                  className='px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm'
-                >
-                  {color.name}
-                </span>
-              ))}
-              {colors.length === 0 && (
-                <span className='text-gray-500 text-sm'>No colors yet</span>
-              )}
-            </div>
           </div>
         </div>
       </div>

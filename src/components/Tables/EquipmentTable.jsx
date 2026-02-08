@@ -15,16 +15,19 @@ const EquipmentTable = ({
   const [formData, setFormData] = useState({
     model: '',
     serial_number: '',
+    brand: '',
+    category: '',
+    article_id: '',
   });
-
-
-console.log(formData,"formData")
 
   const handleEdit = (item) => {
     setSelectedEquipment(item);
     setFormData({
       model: item.model || '',
       serial_number: item.serial_number || '',
+      brand: item.brand || '',
+      category: item.category || '',
+      article_id: item.article_id || '',
     });
     setShowEditModal(true);
   };
@@ -33,6 +36,8 @@ console.log(formData,"formData")
     setSelectedEquipment(item);
     setShowDeleteDialog(true);
   };
+
+  console.log('equipment-table', equipment);
 
   const handleSubmitEdit = (e) => {
     e.preventDefault();
@@ -57,7 +62,7 @@ console.log(formData,"formData")
     });
   };
 
-  // Helper function to get display name for created by
+  console.log(equipment, 'equipment');
   const getCreatedByDisplay = (item) => {
     if (item.created_by_name && item.created_by_name.trim()) {
       return item.created_by_name;
@@ -68,7 +73,6 @@ console.log(formData,"formData")
     return 'Unknown';
   };
 
-  // Helper function to get initials
   const getInitials = (item) => {
     const name = getCreatedByDisplay(item);
     if (name === 'Unknown') return 'U';
@@ -86,6 +90,9 @@ console.log(formData,"formData")
               </th>
               <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider'>
                 Serial Number
+              </th>
+              <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider'>
+                Article ID
               </th>
               <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider'>
                 Category
@@ -107,17 +114,27 @@ console.log(formData,"formData")
           <tbody className='bg-white divide-y divide-gray-200'>
             {equipment.map((item) => (
               <tr key={item.id} className='hover:bg-gray-50'>
-                <td className='px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900'>
-                  {item.model}
+                <td className='px-6 py-4 whitespace-nowrap'>
+                  <div className='text-sm font-medium text-gray-900'>
+                    {item.model}
+                  </div>
+                  {item.template_name && (
+                    <div className='text-xs text-gray-400'>
+                      from: {item.template_name}
+                    </div>
+                  )}
                 </td>
                 <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-500'>
                   {item.serial_number || '-'}
                 </td>
                 <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-500'>
-                  {item.category_name || '-'}
+                  {item.article_id || '-'}
                 </td>
                 <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-500'>
-                  {item.brand_name || '-'}
+                  {item.category || '-'}
+                </td>
+                <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-500'>
+                  {item.brand || '-'}
                 </td>
                 <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-600'>
                   <div className='flex items-center'>
@@ -138,17 +155,15 @@ console.log(formData,"formData")
                         {getInitials(item)}
                       </span>
                     </div>
-                    <div>
-                      <p
-                        className={`font-medium ${
-                          getCreatedByDisplay(item) === 'Unknown'
-                            ? 'text-gray-400 italic'
-                            : ''
-                        }`}
-                      >
-                        {getCreatedByDisplay(item)}
-                      </p>
-                    </div>
+                    <p
+                      className={`font-medium ${
+                        getCreatedByDisplay(item) === 'Unknown'
+                          ? 'text-gray-400 italic'
+                          : ''
+                      }`}
+                    >
+                      {getCreatedByDisplay(item)}
+                    </p>
                   </div>
                 </td>
                 <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-500'>
@@ -167,7 +182,7 @@ console.log(formData,"formData")
                       className='text-green-600 hover:text-green-900'
                       title='Save as Template'
                     >
-                      💾 Template
+                      💾
                     </button>
                   )}
                   <button
@@ -198,34 +213,77 @@ console.log(formData,"formData")
       >
         <form onSubmit={handleSubmitEdit}>
           <div className='space-y-4'>
-            <div>
-              <label className='block text-sm font-medium text-gray-700 mb-2'>
-                Model Name
-              </label>
-              <input
-                type='text'
-                value={formData.model}
-                onChange={(e) =>
-                  setFormData({ ...formData, model: e.target.value })
-                }
-                className='input-field'
-                required
-              />
+            <div className='grid grid-cols-2 gap-4'>
+              <div>
+                <label className='block text-sm font-medium text-gray-700 mb-2'>
+                  Model Name *
+                </label>
+                <input
+                  type='text'
+                  value={formData.model}
+                  onChange={(e) =>
+                    setFormData({ ...formData, model: e.target.value })
+                  }
+                  className='input-field'
+                  required
+                />
+              </div>
+              <div>
+                <label className='block text-sm font-medium text-gray-700 mb-2'>
+                  Serial Number
+                </label>
+                <input
+                  type='text'
+                  value={formData.serial_number}
+                  onChange={(e) =>
+                    setFormData({ ...formData, serial_number: e.target.value })
+                  }
+                  className='input-field'
+                />
+              </div>
+            </div>
+            <div className='grid grid-cols-2 gap-4'>
+              <div>
+                <label className='block text-sm font-medium text-gray-700 mb-2'>
+                  Brand
+                </label>
+                <input
+                  type='text'
+                  value={formData.brand}
+                  onChange={(e) =>
+                    setFormData({ ...formData, brand: e.target.value })
+                  }
+                  className='input-field'
+                />
+              </div>
+              <div>
+                <label className='block text-sm font-medium text-gray-700 mb-2'>
+                  Category
+                </label>
+                <input
+                  type='text'
+                  value={formData.category}
+                  onChange={(e) =>
+                    setFormData({ ...formData, category: e.target.value })
+                  }
+                  className='input-field'
+                />
+              </div>
             </div>
             <div>
               <label className='block text-sm font-medium text-gray-700 mb-2'>
-                Serial Number (Optional)
+                Article ID
               </label>
               <input
                 type='text'
-                value={formData.serial_number}
+                value={formData.article_id}
                 onChange={(e) =>
-                  setFormData({ ...formData, serial_number: e.target.value })
+                  setFormData({ ...formData, article_id: e.target.value })
                 }
                 className='input-field'
               />
             </div>
-            <div className='flex justify-end space-x-3'>
+            <div className='flex justify-end space-x-3 pt-4'>
               <button
                 type='button'
                 onClick={() => setShowEditModal(false)}
@@ -241,7 +299,6 @@ console.log(formData,"formData")
         </form>
       </Modal>
 
-      {/* Delete Confirmation */}
       <ConfirmDialog
         isOpen={showDeleteDialog}
         onClose={() => setShowDeleteDialog(false)}

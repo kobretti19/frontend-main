@@ -2,11 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   fetchParts,
+  fetchColors,
+  fetchCategories,
+  fetchSuppliers,
   createPart,
   updatePart,
   deletePart,
 } from '../redux/slices/partsSlice';
-import { fetchPartsCategories } from '../redux/slices/partsCategoriesSlice';
 import PartsTable from '../components/Tables/PartsTable';
 import Modal from '../components/Common/Modal';
 import LoadingSpinner from '../components/Common/LoadingSpinner';
@@ -15,27 +17,39 @@ import { useSearch } from '../context/SearchContext';
 const Parts = () => {
   const dispatch = useDispatch();
   const { searchTerm } = useSearch();
-  const { items: parts, loading, error } = useSelector((state) => state.parts);
-  const { items: partsCategories } = useSelector(
-    (state) => state.partsCategories
-  );
+  const {
+    items: parts,
+    colors,
+    categories,
+    suppliers,
+    loading,
+    error,
+  } = useSelector((state) => state.parts);
+
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [filterCategory, setFilterCategory] = useState('');
+  const [filterColor, setFilterColor] = useState('');
+  const [filterSupplier, setFilterSupplier] = useState('');
+
   const [formData, setFormData] = useState({
     name: '',
     description: '',
+    color: '',
+    category: '',
+    supplier: '',
+    sku: '',
+    article_id: '',
     purchase_price: '',
     selling_price: '',
-    part_category_id: '',
+    quantity: '',
+    min_stock_level: '5',
   });
 
   useEffect(() => {
-    dispatch(fetchParts()).catch((err) =>
-      console.error('Failed to fetch parts:', err)
-    );
-    dispatch(fetchPartsCategories()).catch((err) =>
-      console.error('Failed to fetch categories:', err)
-    );
+    dispatch(fetchParts());
+    dispatch(fetchColors());
+    dispatch(fetchCategories());
+    dispatch(fetchSuppliers());
   }, [dispatch]);
 
   // Filter parts
@@ -43,12 +57,16 @@ const Parts = () => {
     const matchesSearch =
       part.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       part.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      part.category_name?.toLowerCase().includes(searchTerm.toLowerCase());
+      part.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      part.color?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      part.category?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      part.supplier?.toLowerCase().includes(searchTerm.toLowerCase());
 
-    const matchesCategory =
-      !filterCategory || part.part_category_id?.toString() === filterCategory;
+    const matchesCategory = !filterCategory || part.category === filterCategory;
+    const matchesColor = !filterColor || part.color === filterColor;
+    const matchesSupplier = !filterSupplier || part.supplier === filterSupplier;
 
-    return matchesSearch && matchesCategory;
+    return matchesSearch && matchesCategory && matchesColor && matchesSupplier;
   });
 
   const handleCreate = (e) => {
@@ -57,32 +75,74 @@ const Parts = () => {
       ...formData,
       purchase_price: parseFloat(formData.purchase_price) || 0,
       selling_price: parseFloat(formData.selling_price) || 0,
+      quantity: parseInt(formData.quantity) || 0,
+      min_stock_level: parseInt(formData.min_stock_level) || 5,
     };
     dispatch(createPart(dataToSend))
+      .unwrap()
       .then(() => {
         setShowCreateModal(false);
-        setFormData({
-          name: '',
-          description: '',
-          purchase_price: '',
-          selling_price: '',
-          part_category_id: '',
-        });
+        resetForm();
+        // Refresh dropdown options
+        dispatch(fetchColors());
+        dispatch(fetchCategories());
+        dispatch(fetchSuppliers());
       })
       .catch((err) => console.error('Failed to create part:', err));
   };
 
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      description: '',
+      color: '',
+      category: '',
+      supplier: '',
+      sku: '',
+      article_id: '',
+      purchase_price: '',
+      selling_price: '',
+      quantity: '',
+      min_stock_level: '5',
+    });
+  };
+
   const handleEdit = (id, data) => {
-    dispatch(updatePart({ id, data })).catch((err) =>
-      console.error('Failed to update part:', err)
-    );
+    dispatch(updatePart({ id, data }))
+      .unwrap()
+      .then(() => {
+        // Refresh dropdown options in case new values were added
+        dispatch(fetchColors());
+        dispatch(fetchCategories());
+        dispatch(fetchSuppliers());
+      })
+      .catch((err) => console.error('Failed to update part:', err));
   };
 
   const handleDelete = (id) => {
-    dispatch(deletePart(id)).catch((err) =>
-      console.error('Failed to delete part:', err)
-    );
+    if (window.confirm('Are you sure you want to delete this part?')) {
+      dispatch(deletePart(id)).catch((err) =>
+        console.error('Failed to delete part:', err),
+      );
+    }
   };
+
+  const clearFilters = () => {
+    setFilterCategory('');
+    setFilterColor('');
+    setFilterSupplier('');
+  };
+
+  const hasActiveFilters = filterCategory || filterColor || filterSupplier;
+
+  // Calculate stats
+  const lowStockCount = parts.filter(
+    (p) => p.quantity <= p.min_stock_level,
+  ).length;
+  const totalValue = parts.reduce(
+    (sum, p) => sum + p.quantity * p.purchase_price,
+    0,
+  );
 
   if (error) {
     return (
@@ -107,7 +167,7 @@ const Parts = () => {
         <div>
           <h1 className='text-3xl font-bold text-gray-900'>Parts</h1>
           <p className='text-gray-600 mt-1'>
-            Manage your equipment parts and pricing
+            Manage your equipment parts, pricing and inventory
           </p>
         </div>
         <button
@@ -119,7 +179,7 @@ const Parts = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className='grid grid-cols-1 md:grid-cols-3 gap-6 mb-6'>
+      <div className='grid grid-cols-1 md:grid-cols-4 gap-6 mb-6'>
         <div className='card'>
           <p className='text-sm font-medium text-gray-600'>Total Parts</p>
           <p className='text-3xl font-bold text-gray-900 mt-2'>
@@ -127,9 +187,15 @@ const Parts = () => {
           </p>
         </div>
         <div className='card'>
-          <p className='text-sm font-medium text-gray-600'>Categories</p>
-          <p className='text-3xl font-bold text-blue-600 mt-2'>
-            {partsCategories.length}
+          <p className='text-sm font-medium text-gray-600'>Low Stock</p>
+          <p className='text-3xl font-bold text-red-600 mt-2'>
+            {lowStockCount}
+          </p>
+        </div>
+        <div className='card'>
+          <p className='text-sm font-medium text-gray-600'>Total Value</p>
+          <p className='text-3xl font-bold text-green-600 mt-2'>
+            CHF {totalValue.toFixed(2)}
           </p>
         </div>
         <div className='card'>
@@ -154,25 +220,49 @@ const Parts = () => {
             )}
           </div>
 
-          <div className='flex items-center space-x-3'>
+          <div className='flex  items-center gap-3 font-xs'>
             <select
               value={filterCategory}
               onChange={(e) => setFilterCategory(e.target.value)}
-              className='input-field'
+              className='input-field w-auto'
             >
               <option value=''>All Categories</option>
-              {partsCategories.map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.name}
+              {categories.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat}
                 </option>
               ))}
             </select>
 
-            {filterCategory && (
+            <select
+              value={filterColor}
+              onChange={(e) => setFilterColor(e.target.value)}
+              className='input-field'
+            >
+              <option value=''>All Colors</option>
+              {colors.map((color) => (
+                <option key={color} value={color}>
+                  {color}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={filterSupplier}
+              onChange={(e) => setFilterSupplier(e.target.value)}
+              className='input-field w-auto'
+            >
+              <option value=''>All Suppliers</option>
+              {suppliers.map((supplier) => (
+                <option key={supplier} value={supplier}>
+                  {supplier}
+                </option>
+              ))}
+            </select>
+
+            {hasActiveFilters && (
               <button
-                onClick={() => {
-                  setFilterCategory('');
-                }}
+                onClick={clearFilters}
                 className='btn-secondary whitespace-nowrap'
               >
                 Clear Filters
@@ -207,35 +297,134 @@ const Parts = () => {
       ) : (
         <PartsTable
           parts={filteredParts}
-          partsCategories={partsCategories}
           onEdit={handleEdit}
           onDelete={handleDelete}
         />
       )}
 
+      {/* Create Modal */}
       <Modal
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
         title='Create New Part'
-        size='md'
+        size='lg'
       >
         <form onSubmit={handleCreate}>
           <div className='space-y-4'>
+            {/* Row 1: Name & SKU */}
+            <div className='grid grid-cols-2 gap-4'>
+              <div>
+                <label className='block text-sm font-medium text-gray-700 mb-2'>
+                  Part Name *
+                </label>
+                <input
+                  type='text'
+                  value={formData.name}
+                  onChange={(e) =>
+                    setFormData({ ...formData, name: e.target.value })
+                  }
+                  className='input-field'
+                  placeholder='Enter part name'
+                  required
+                />
+              </div>
+              <div>
+                <label className='block text-sm font-medium text-gray-700 mb-2'>
+                  SKU / Order Number
+                </label>
+                <input
+                  type='text'
+                  value={formData.sku}
+                  onChange={(e) =>
+                    setFormData({ ...formData, sku: e.target.value })
+                  }
+                  className='input-field'
+                  placeholder='e.g., FP-BLK-001'
+                />
+              </div>
+            </div>
+
+            {/* Row 2: Color, Category, Supplier */}
+            <div className='grid grid-cols-3 gap-4'>
+              <div>
+                <label className='block text-sm font-medium text-gray-700 mb-2'>
+                  Color
+                </label>
+                <input
+                  type='text'
+                  value={formData.color}
+                  onChange={(e) =>
+                    setFormData({ ...formData, color: e.target.value })
+                  }
+                  className='input-field'
+                  placeholder='e.g., Black'
+                  list='colors-list'
+                />
+                <datalist id='colors-list'>
+                  {colors.map((color) => (
+                    <option key={color} value={color} />
+                  ))}
+                </datalist>
+              </div>
+              <div>
+                <label className='block text-sm font-medium text-gray-700 mb-2'>
+                  Category
+                </label>
+                <input
+                  type='text'
+                  value={formData.category}
+                  onChange={(e) =>
+                    setFormData({ ...formData, category: e.target.value })
+                  }
+                  className='input-field'
+                  placeholder='e.g., Panels'
+                  list='categories-list'
+                />
+                <datalist id='categories-list'>
+                  {categories.map((cat) => (
+                    <option key={cat} value={cat} />
+                  ))}
+                </datalist>
+              </div>
+              <div>
+                <label className='block text-sm font-medium text-gray-700 mb-2'>
+                  Supplier
+                </label>
+                <input
+                  type='text'
+                  value={formData.supplier}
+                  onChange={(e) =>
+                    setFormData({ ...formData, supplier: e.target.value })
+                  }
+                  className='input-field'
+                  placeholder='e.g., ABC GmbH'
+                  list='suppliers-list'
+                />
+                <datalist id='suppliers-list'>
+                  {suppliers.map((supplier) => (
+                    <option key={supplier} value={supplier} />
+                  ))}
+                </datalist>
+              </div>
+            </div>
+
+            {/* Row 3: Article ID */}
             <div>
               <label className='block text-sm font-medium text-gray-700 mb-2'>
-                Part Name *
+                Article ID (External Reference)
               </label>
               <input
                 type='text'
-                value={formData.name}
+                value={formData.article_id}
                 onChange={(e) =>
-                  setFormData({ ...formData, name: e.target.value })
+                  setFormData({ ...formData, article_id: e.target.value })
                 }
                 className='input-field'
-                placeholder='Enter part name'
-                required
+                placeholder='e.g., ART-1001'
               />
             </div>
+
+            {/* Row 4: Description */}
             <div>
               <label className='block text-sm font-medium text-gray-700 mb-2'>
                 Description
@@ -247,9 +436,11 @@ const Parts = () => {
                 }
                 className='input-field'
                 placeholder='Enter description'
-                rows='3'
+                rows='2'
               />
             </div>
+
+            {/* Row 5: Prices */}
             <div className='grid grid-cols-2 gap-4'>
               <div>
                 <label className='block text-sm font-medium text-gray-700 mb-2'>
@@ -284,29 +475,52 @@ const Parts = () => {
                 />
               </div>
             </div>
-            <div>
-              <label className='block text-sm font-medium text-gray-700 mb-2'>
-                Category
-              </label>
-              <select
-                value={formData.part_category_id}
-                onChange={(e) =>
-                  setFormData({ ...formData, part_category_id: e.target.value })
-                }
-                className='input-field'
-              >
-                <option value=''>Select category (optional)</option>
-                {partsCategories.map((cat) => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.name}
-                  </option>
-                ))}
-              </select>
+
+            {/* Row 6: Quantity & Min Stock */}
+            <div className='grid grid-cols-2 gap-4'>
+              <div>
+                <label className='block text-sm font-medium text-gray-700 mb-2'>
+                  Initial Quantity
+                </label>
+                <input
+                  type='number'
+                  value={formData.quantity}
+                  onChange={(e) =>
+                    setFormData({ ...formData, quantity: e.target.value })
+                  }
+                  className='input-field'
+                  placeholder='0'
+                  min='0'
+                />
+              </div>
+              <div>
+                <label className='block text-sm font-medium text-gray-700 mb-2'>
+                  Min Stock Level
+                </label>
+                <input
+                  type='number'
+                  value={formData.min_stock_level}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      min_stock_level: e.target.value,
+                    })
+                  }
+                  className='input-field'
+                  placeholder='5'
+                  min='0'
+                />
+              </div>
             </div>
-            <div className='flex justify-end space-x-3'>
+
+            {/* Buttons */}
+            <div className='flex justify-end space-x-3 pt-4'>
               <button
                 type='button'
-                onClick={() => setShowCreateModal(false)}
+                onClick={() => {
+                  setShowCreateModal(false);
+                  resetForm();
+                }}
                 className='btn-secondary'
               >
                 Cancel

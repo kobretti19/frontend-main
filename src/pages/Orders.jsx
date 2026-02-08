@@ -7,46 +7,59 @@ import {
   deleteOrder,
   fetchOrderStats,
 } from '../redux/slices/ordersSlice';
-import { fetchPartsColors } from '../redux/slices/partsColorsSlice';
+import { fetchParts } from '../redux/slices/partsSlice';
 import { ordersAPI } from '../api/api';
-import Modal from '../components/Common/Modal';
-import ConfirmDialog from '../components/Common/ConfirmDialog';
-import LoadingSpinner from '../components/Common/LoadingSpinner';
+import {
+  Modal,
+  ConfirmDialog,
+  LoadingSpinner,
+  StatsCard,
+  EmptyState,
+} from '../components/Common';
 import { useSearch } from '../context/SearchContext';
 
 const Orders = () => {
   const dispatch = useDispatch();
   const { searchTerm } = useSearch();
 
-  const orders = useSelector((state) => state.orders?.items || []);
-  const stats = useSelector((state) => state.orders?.stats || null);
-  const loading = useSelector((state) => state.orders?.loading || false);
-  const partsColors = useSelector((state) => state.partsColors?.items || []);
+  // Redux state
+  const {
+    items: orders,
+    stats,
+    loading,
+  } = useSelector((state) => state.orders);
+  const { items: parts } = useSelector((state) => state.parts);
 
+  // Modals
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDeliveryModal, setShowDeliveryModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
+  // State
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [orderDetails, setOrderDetails] = useState(null);
   const [deliveryItems, setDeliveryItems] = useState([]);
+  const [deliveryNotes, setDeliveryNotes] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
 
+  // Form
   const [formData, setFormData] = useState({
+    order_number: '',
     notes: '',
     items: [],
   });
   const [currentItem, setCurrentItem] = useState({
-    part_color_id: '',
+    part_id: '',
     quantity: 1,
+    unit_price: '',
     notes: '',
   });
-  const [deliveryNotes, setDeliveryNotes] = useState('');
 
   useEffect(() => {
     dispatch(fetchOrders());
     dispatch(fetchOrderStats());
-    dispatch(fetchPartsColors());
+    dispatch(fetchParts());
   }, [dispatch]);
 
   // Filter orders
@@ -54,7 +67,6 @@ const Orders = () => {
     const matchesSearch =
       order.order_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.notes?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.items_summary?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.created_by_name?.toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesStatus = !filterStatus || order.status === filterStatus;
@@ -62,71 +74,70 @@ const Orders = () => {
     return matchesSearch && matchesStatus;
   });
 
+  // Handlers
+  const resetForm = () => {
+    setFormData({ order_number: '', notes: '', items: [] });
+    setCurrentItem({ part_id: '', quantity: 1, unit_price: '', notes: '' });
+  };
+
   const handleCreate = async (e) => {
     e.preventDefault();
 
     if (formData.items.length === 0) {
-      alert('Please add at least one item to the order');
+      alert('Please add at least one item');
       return;
     }
 
     try {
       await dispatch(createOrder(formData)).unwrap();
       setShowCreateModal(false);
-      setFormData({ notes: '', items: [] });
-      dispatch(fetchOrders());
+      resetForm();
       dispatch(fetchOrderStats());
     } catch (err) {
-      alert(`Failed to create order: ${err.message || 'Unknown error'}`);
+      alert(`Failed to create order: ${err.message || err}`);
     }
   };
 
   const addItemToList = () => {
-    if (!currentItem.part_color_id || currentItem.quantity <= 0) {
+    if (!currentItem.part_id || currentItem.quantity <= 0) {
       alert('Please select a part and enter valid quantity');
       return;
     }
 
-    const partColor = partsColors.find(
-      (pc) => pc.id === parseInt(currentItem.part_color_id),
-    );
-
-    if (!partColor) {
-      alert('Part color not found');
+    const part = parts.find((p) => p.id === parseInt(currentItem.part_id));
+    if (!part) {
+      alert('Part not found');
       return;
     }
 
     const exists = formData.items.find(
-      (item) => item.part_color_id === parseInt(currentItem.part_color_id),
+      (item) => item.part_id === parseInt(currentItem.part_id),
     );
-
     if (exists) {
-      alert('This part is already added to the order');
+      alert('This part is already added');
       return;
     }
+
+    const unitPrice = currentItem.unit_price || part.purchase_price || 0;
 
     setFormData({
       ...formData,
       items: [
         ...formData.items,
         {
-          part_color_id: parseInt(currentItem.part_color_id),
+          part_id: parseInt(currentItem.part_id),
           quantity: parseInt(currentItem.quantity),
+          unit_price: parseFloat(unitPrice),
           notes: currentItem.notes || '',
-          part_name: partColor.part_name,
-          color_name: partColor.color_name,
-          purchase_price: partColor.purchase_price || 0,
+          // Display info
+          part_name: part.name,
+          part_color: part.color,
+          part_sku: part.sku,
         },
       ],
     });
 
-    setCurrentItem({ part_color_id: '', quantity: 1, notes: '' });
-  };
-
-  const updateItemNotes = (index, notes) => {
-    const updatedItems = [...formData.items];
-    updatedItems[index].notes = notes;
-    setFormData({ ...formData, items: updatedItems });
+    setCurrentItem({ part_id: '', quantity: 1, unit_price: '', notes: '' });
   };
 
   const removeItemFromList = (index) => {
@@ -136,13 +147,19 @@ const Orders = () => {
     });
   };
 
+  const updateItemField = (index, field, value) => {
+    const updated = [...formData.items];
+    updated[index][field] = value;
+    setFormData({ ...formData, items: updated });
+  };
+
   const handleViewOrder = async (order) => {
     try {
       const response = await ordersAPI.getById(order.id);
       setOrderDetails(response.data.data);
       setShowViewModal(true);
     } catch (err) {
-      alert(`Failed to load order details: ${err.message || 'Unknown error'}`);
+      alert(`Failed to load order: ${err.message || err}`);
     }
   };
 
@@ -153,29 +170,26 @@ const Orders = () => {
 
       setSelectedOrder(fullOrder);
 
-      // Initialize delivery items with current quantities
-      // For partial_delivered orders, show what's already been delivered
-      // and set new delivery to 0 (user enters what they're receiving NOW)
-      const isPartialDelivery = order.status === 'partial_delivered';
+      const isPartial = order.status === 'partial';
 
       setDeliveryItems(
         fullOrder.items?.map((item) => {
-          const ordered = item.quantity_ordered || item.quantity;
+          const ordered = item.total_quantity || 0;
           const alreadyDelivered = item.quantity_delivered || 0;
           const currentBackorder = item.quantity_backorder || 0;
 
           return {
             id: item.id,
-            part_color_id: item.part_color_id,
+            part_id: item.part_id,
             part_name: item.part_name,
-            color_name: item.color_name,
+            part_color: item.part_color,
             quantity_ordered: ordered,
-            quantity_already_delivered: alreadyDelivered, // Track what was already delivered
-            quantity_delivered: isPartialDelivery ? alreadyDelivered : ordered, // Start with already delivered or full
-            quantity_backorder: isPartialDelivery ? currentBackorder : 0,
-            quantity_receiving: isPartialDelivery ? 0 : ordered, // NEW: what they're receiving now
+            quantity_already_delivered: alreadyDelivered,
+            quantity_delivered: isPartial ? alreadyDelivered : ordered,
+            quantity_backorder: isPartial ? currentBackorder : 0,
+            quantity_receiving: isPartial ? 0 : ordered,
             item_status: item.item_status || 'delivered',
-            purchase_price_at_order: item.purchase_price_at_order,
+            unit_price: item.unit_price,
             notes: item.notes || '',
           };
         }) || [],
@@ -183,7 +197,7 @@ const Orders = () => {
       setDeliveryNotes('');
       setShowDeliveryModal(true);
     } catch (err) {
-      alert(`Failed to load order: ${err.message || 'Unknown error'}`);
+      alert(`Failed to load order: ${err.message || err}`);
     }
   };
 
@@ -193,16 +207,15 @@ const Orders = () => {
     const ordered = item.quantity_ordered;
     const alreadyDelivered = item.quantity_already_delivered || 0;
 
-    receivingQty = Math.max(0, Math.min(parseInt(receivingQty) || 0));
+    receivingQty = Math.max(0, parseInt(receivingQty) || 0);
 
     const totalDelivered = alreadyDelivered + receivingQty;
     const remaining = ordered - totalDelivered;
 
     item.quantity_receiving = receivingQty;
     item.quantity_delivered = totalDelivered;
-    item.quantity_backorder = remaining;
+    item.quantity_backorder = Math.max(0, remaining);
 
-    // Auto-set status based on quantities
     if (totalDelivered === 0) {
       item.item_status = 'backorder';
     } else if (remaining > 0) {
@@ -217,10 +230,8 @@ const Orders = () => {
   const handleItemStatusChange = (index, status) => {
     const updated = [...deliveryItems];
     const item = updated[index];
-
     item.item_status = status;
 
-    // Adjust quantities based on status
     if (status === 'cancelled') {
       item.quantity_delivered = 0;
       item.quantity_backorder = 0;
@@ -235,7 +246,6 @@ const Orders = () => {
   const handleDeliverySubmit = async (e) => {
     e.preventDefault();
 
-    // Check if there's anything to receive
     const totalReceiving = deliveryItems.reduce(
       (sum, item) => sum + (item.quantity_receiving || 0),
       0,
@@ -246,11 +256,10 @@ const Orders = () => {
     }
 
     try {
-      // Send only the quantity being received NOW (not total delivered)
       const itemsPayload = deliveryItems.map((item) => ({
         id: item.id,
-        part_color_id: item.part_color_id,
-        quantity_delivered: parseInt(item.quantity_receiving) || 0, // Send what we're receiving NOW
+        part_id: item.part_id,
+        quantity_delivered: parseInt(item.quantity_receiving) || 0,
         quantity_backorder: parseInt(item.quantity_backorder) || 0,
         item_status: item.item_status,
       }));
@@ -262,7 +271,7 @@ const Orders = () => {
       await dispatch(
         updateOrderStatus({
           id: selectedOrder.id,
-          status: hasBackorder ? 'partial_delivered' : 'delivered',
+          status: hasBackorder ? 'partial' : 'delivered',
           notes: deliveryNotes,
           items: itemsPayload,
         }),
@@ -271,12 +280,11 @@ const Orders = () => {
       setShowDeliveryModal(false);
       setSelectedOrder(null);
       setDeliveryItems([]);
-      setDeliveryNotes('');
       dispatch(fetchOrders());
       dispatch(fetchOrderStats());
-      dispatch(fetchPartsColors());
+      dispatch(fetchParts());
     } catch (err) {
-      alert(`Failed to process delivery: ${err.message || 'Unknown error'}`);
+      alert(`Failed to process delivery: ${err.message || err}`);
     }
   };
 
@@ -290,11 +298,10 @@ const Orders = () => {
           items: [],
         }),
       ).unwrap();
-
       dispatch(fetchOrders());
       dispatch(fetchOrderStats());
     } catch (err) {
-      alert(`Failed to update status: ${err.message || 'Unknown error'}`);
+      alert(`Failed to update status: ${err.message || err}`);
     }
   };
 
@@ -303,20 +310,20 @@ const Orders = () => {
       await dispatch(deleteOrder(selectedOrder.id)).unwrap();
       setShowDeleteDialog(false);
       setSelectedOrder(null);
-      dispatch(fetchOrders());
       dispatch(fetchOrderStats());
     } catch (err) {
-      alert(`Failed to cancel order: ${err.message || 'Unknown error'}`);
+      alert(`Failed to cancel order: ${err.message || err}`);
     }
   };
 
+  // Helpers
   const getStatusColor = (status) => {
     const colors = {
-      waiting_for_answer: 'bg-yellow-100 text-yellow-800',
-      to_order: 'bg-blue-100 text-blue-800',
+      draft: 'bg-gray-100 text-gray-800',
+      pending: 'bg-yellow-100 text-yellow-800',
       ordered: 'bg-purple-100 text-purple-800',
       delivered: 'bg-green-100 text-green-800',
-      partial_delivered: 'bg-orange-100 text-orange-800',
+      partial: 'bg-orange-100 text-orange-800',
       cancelled: 'bg-red-100 text-red-800',
     };
     return colors[status] || 'bg-gray-100 text-gray-800';
@@ -335,10 +342,7 @@ const Orders = () => {
 
   const formatStatus = (status) => {
     if (!status) return '-';
-    return status
-      .split('_')
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
+    return status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ');
   };
 
   const formatDate = (dateString) => {
@@ -353,27 +357,18 @@ const Orders = () => {
   const calculateTotal = (items) => {
     return items.reduce(
       (total, item) =>
-        total + (parseFloat(item.purchase_price) || 0) * item.quantity,
-      0,
-    );
-  };
-
-  const calculateDeliveryTotal = () => {
-    return deliveryItems.reduce(
-      (total, item) =>
-        total +
-        (parseFloat(item.purchase_price_at_order) || 0) *
-          item.quantity_delivered,
+        total + (parseFloat(item.unit_price) || 0) * item.quantity,
       0,
     );
   };
 
   return (
     <div>
+      {/* Header */}
       <div className='flex justify-between items-center mb-6'>
         <div>
           <h1 className='text-3xl font-bold text-gray-900'>Orders</h1>
-          <p className='text-gray-600 mt-1'>Manage your supplier orders</p>
+          <p className='text-gray-600 mt-1'>Manage supplier orders</p>
         </div>
         <button
           onClick={() => setShowCreateModal(true)}
@@ -383,60 +378,45 @@ const Orders = () => {
         </button>
       </div>
 
-      {/* Stats Cards */}
-      <div className='grid grid-cols-2 md:grid-cols-6 gap-4 mb-6'>
-        <div className='card'>
-          <p className='text-sm font-medium text-gray-600'>Total</p>
-          <p className='text-2xl font-bold text-gray-900 mt-1'>
-            {stats?.overall?.total_orders || 0}
-          </p>
-        </div>
-        <div className='card'>
-          <p className='text-sm font-medium text-gray-600'>Waiting</p>
-          <p className='text-2xl font-bold text-yellow-600 mt-1'>
-            {stats?.overall?.waiting_for_answer || 0}
-          </p>
-        </div>
-        <div className='card'>
-          <p className='text-sm font-medium text-gray-600'>Ordered</p>
-          <p className='text-2xl font-bold text-purple-600 mt-1'>
-            {stats?.overall?.ordered || 0}
-          </p>
-        </div>
-        <div className='card'>
-          <p className='text-sm font-medium text-gray-600'>Delivered</p>
-          <p className='text-2xl font-bold text-green-600 mt-1'>
-            {stats?.overall?.delivered || 0}
-          </p>
-        </div>
-        <div className='card'>
-          <p className='text-sm font-medium text-gray-600'>Partial</p>
-          <p className='text-2xl font-bold text-orange-600 mt-1'>
-            {stats?.overall?.partial_delivered || 0}
-          </p>
-        </div>
-        <div className='card'>
-          <p className='text-sm font-medium text-gray-600'>Backorder Items</p>
-          <p className='text-2xl font-bold text-red-600 mt-1'>
-            {stats?.overall?.backorder_items || 0}
-          </p>
-        </div>
+      {/* Stats */}
+      <div className='grid grid-cols-2 md:grid-cols-5 gap-4 mb-6'>
+        <StatsCard
+          label='Total'
+          value={stats?.overall?.total_orders || orders.length}
+          color='gray'
+        />
+        <StatsCard
+          label='Pending'
+          value={stats?.overall?.pending || 0}
+          color='orange'
+        />
+        <StatsCard
+          label='Ordered'
+          value={stats?.overall?.ordered || 0}
+          color='purple'
+        />
+        <StatsCard
+          label='Delivered'
+          value={stats?.overall?.delivered || 0}
+          color='green'
+        />
+        <StatsCard
+          label='Partial'
+          value={stats?.overall?.partial || 0}
+          color='red'
+        />
       </div>
 
       {/* Filters */}
       <div className='card mb-6'>
-        <div className='flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0 gap-4'>
+        <div className='flex flex-col md:flex-row md:items-center md:justify-between gap-4'>
           <div className='flex-1'>
             {searchTerm && (
               <p className='text-sm text-gray-600'>
-                Searching for:{' '}
-                <span className='font-medium text-gray-900'>
-                  "{searchTerm}"
-                </span>
+                Searching: <span className='font-medium'>"{searchTerm}"</span>
               </p>
             )}
           </div>
-
           <div className='flex items-center space-x-3'>
             <select
               value={filterStatus}
@@ -444,14 +424,13 @@ const Orders = () => {
               className='input-field'
             >
               <option value=''>All Status</option>
-              <option value='waiting_for_answer'>Waiting</option>
-              <option value='to_order'>To Order</option>
+              <option value='draft'>Draft</option>
+              <option value='pending'>Pending</option>
               <option value='ordered'>Ordered</option>
               <option value='delivered'>Delivered</option>
-              <option value='partial_delivered'>Partial Delivered</option>
+              <option value='partial'>Partial</option>
               <option value='cancelled'>Cancelled</option>
             </select>
-
             {filterStatus && (
               <button
                 onClick={() => setFilterStatus('')}
@@ -464,28 +443,18 @@ const Orders = () => {
         </div>
       </div>
 
+      {/* Content */}
       {loading ? (
         <LoadingSpinner />
       ) : filteredOrders.length === 0 ? (
-        <div className='card text-center py-12'>
-          <div className='text-6xl mb-4'>📦</div>
-          <p className='text-xl font-semibold text-gray-900 mb-2'>
-            {orders.length === 0 ? 'No Orders Yet' : 'No Results Found'}
-          </p>
-          <p className='text-gray-500 mb-6'>
-            {orders.length === 0
-              ? 'Create your first order'
-              : 'Try adjusting your search'}
-          </p>
-          {orders.length === 0 && (
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className='btn-primary'
-            >
-              + Create Order
-            </button>
-          )}
-        </div>
+        <EmptyState
+          icon='📦'
+          title='No Orders Yet'
+          message='Create your first order'
+          actionLabel='+ Create Order'
+          onAction={() => setShowCreateModal(true)}
+          hasItems={orders.length > 0}
+        />
       ) : (
         <div className='card overflow-hidden'>
           <table className='min-w-full divide-y divide-gray-200'>
@@ -499,6 +468,9 @@ const Orders = () => {
                 </th>
                 <th className='px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
                   Total
+                </th>
+                <th className='px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
+                  Notes
                 </th>
                 <th className='px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
                   Status
@@ -516,19 +488,19 @@ const Orders = () => {
                 <tr key={order.id} className='hover:bg-gray-50'>
                   <td className='px-4 py-3'>
                     <p className='text-sm font-medium text-gray-900'>
-                      {order.order_number}
+                      {order.order_number || `#${order.id}`}
                     </p>
                     <p className='text-xs text-gray-500'>
-                      {order.created_by_name}
+                      {order.fullname || '-'}
                     </p>
                   </td>
                   <td className='px-4 py-3'>
-                    <p className='text-sm text-gray-600 max-w-xs truncate'>
-                      {order.items_summary || `${order.total_items} items`}
+                    <p className='text-sm text-gray-600'>
+                      {order.total_quantity || 0} items
                     </p>
                     {order.total_backorder > 0 && (
                       <p className='text-xs text-orange-600'>
-                        ⚠️ {order.total_backorder} on backorder
+                        ⚠️ {order.total_backorder} backorder
                       </p>
                     )}
                   </td>
@@ -538,10 +510,13 @@ const Orders = () => {
                     </p>
                   </td>
                   <td className='px-4 py-3'>
+                    <p className='text-sm text-gray-600 max-w-xs truncate'>
+                      {order.notes || '-'}
+                    </p>
+                  </td>
+                  <td className='px-4 py-3'>
                     <span
-                      className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(
-                        order.status,
-                      )}`}
+                      className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(order.status)}`}
                     >
                       {formatStatus(order.status)}
                     </span>
@@ -557,17 +532,7 @@ const Orders = () => {
                       View
                     </button>
 
-                    {/* Status progression buttons */}
-                    {order.status === 'waiting_for_answer' && (
-                      <button
-                        onClick={() => handleStatusChange(order, 'to_order')}
-                        className='text-blue-600 hover:text-blue-900'
-                      >
-                        → To Order
-                      </button>
-                    )}
-
-                    {order.status === 'to_order' && (
+                    {order.status === 'draft' && (
                       <button
                         onClick={() => handleStatusChange(order, 'ordered')}
                         className='text-purple-600 hover:text-purple-900'
@@ -585,27 +550,26 @@ const Orders = () => {
                       </button>
                     )}
 
-                    {order.status === 'partial_delivered' && (
+                    {order.status === 'partial' && (
                       <button
                         onClick={() => handleOpenDeliveryModal(order)}
                         className='text-orange-600 hover:text-orange-900 font-medium'
                       >
-                        📦 Receive More
+                        📦 More
                       </button>
                     )}
 
-                    {order.status !== 'delivered' &&
-                      order.status !== 'cancelled' && (
-                        <button
-                          onClick={() => {
-                            setSelectedOrder(order);
-                            setShowDeleteDialog(true);
-                          }}
-                          className='text-red-600 hover:text-red-900'
-                        >
-                          Cancel
-                        </button>
-                      )}
+                    {!['delivered', 'cancelled'].includes(order.status) && (
+                      <button
+                        onClick={() => {
+                          setSelectedOrder(order);
+                          setShowDeleteDialog(true);
+                        }}
+                        className='text-red-600 hover:text-red-900'
+                      >
+                        Cancel
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -614,183 +578,235 @@ const Orders = () => {
         </div>
       )}
 
-      {/* Create Order Modal */}
+      {/* Create Modal */}
       <Modal
         isOpen={showCreateModal}
         onClose={() => {
           setShowCreateModal(false);
-          setFormData({ notes: '', items: [] });
+          resetForm();
         }}
-        title='Create New Order'
-        size='lg'
+        title='Create Order'
+        size='xl'
       >
-        <form onSubmit={handleCreate}>
-          <div className='space-y-4'>
+        <form onSubmit={handleCreate} className='space-y-4'>
+          <div className='grid grid-cols-2 gap-4'>
             <div>
-              <label className='block text-sm font-medium text-gray-700 mb-1'>
-                Notes
+              <label className='block text-sm font-medium text-gray-700 mb-2'>
+                Order Number (Optional)
               </label>
-              <textarea
+              <input
+                type='text'
+                value={formData.order_number}
+                onChange={(e) =>
+                  setFormData({ ...formData, order_number: e.target.value })
+                }
+                className='input-field'
+                placeholder='e.g., PO-2024-001'
+              />
+            </div>
+            <div>
+              <label className='block text-sm font-medium text-gray-700 mb-2'>
+                Order Notes
+              </label>
+              <input
+                type='text'
                 value={formData.notes}
                 onChange={(e) =>
                   setFormData({ ...formData, notes: e.target.value })
                 }
                 className='input-field'
-                rows='2'
-                placeholder='Order notes...'
+                placeholder='General order notes...'
+              />
+            </div>
+          </div>
+
+          {/* Add Items */}
+          <div>
+            <label className='block text-sm font-medium text-gray-700 mb-2'>
+              Add Items ({formData.items.length})
+            </label>
+            <div className='bg-gray-50 p-3 rounded-lg mb-3 space-y-2'>
+              <div className='grid grid-cols-5 gap-2'>
+                <select
+                  value={currentItem.part_id}
+                  onChange={(e) => {
+                    const part = parts.find(
+                      (p) => p.id === parseInt(e.target.value),
+                    );
+                    setCurrentItem({
+                      ...currentItem,
+                      part_id: e.target.value,
+                      unit_price: part?.purchase_price || '',
+                    });
+                  }}
+                  className='input-field col-span-2'
+                >
+                  <option value=''>Select part</option>
+                  {parts.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} {p.color ? `(${p.color})` : ''} - CHF{' '}
+                      {p.purchase_price || 0}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type='number'
+                  value={currentItem.quantity}
+                  onChange={(e) =>
+                    setCurrentItem({ ...currentItem, quantity: e.target.value })
+                  }
+                  className='input-field'
+                  placeholder='Qty'
+                  min='1'
+                />
+                <input
+                  type='number'
+                  step='0.01'
+                  value={currentItem.unit_price}
+                  onChange={(e) =>
+                    setCurrentItem({
+                      ...currentItem,
+                      unit_price: e.target.value,
+                    })
+                  }
+                  className='input-field'
+                  placeholder='Price'
+                />
+                <button
+                  type='button'
+                  onClick={addItemToList}
+                  className='btn-success'
+                >
+                  Add
+                </button>
+              </div>
+              {/* Per-item notes input */}
+              <input
+                type='text'
+                value={currentItem.notes}
+                onChange={(e) =>
+                  setCurrentItem({ ...currentItem, notes: e.target.value })
+                }
+                className='input-field'
+                placeholder='Item notes (e.g., color preference, size, special request...)'
               />
             </div>
 
-            <div>
-              <label className='block text-sm font-medium text-gray-700 mb-2'>
-                Add Items ({formData.items.length})
-              </label>
-              <div className='bg-gray-50 p-3 rounded-lg mb-3'>
-                <div className='grid grid-cols-4 gap-2'>
-                  <select
-                    value={currentItem.part_color_id}
-                    onChange={(e) =>
-                      setCurrentItem({
-                        ...currentItem,
-                        part_color_id: e.target.value,
-                      })
-                    }
-                    className='input-field col-span-2'
-                  >
-                    <option value=''>Select part & color</option>
-                    {partsColors.map((pc) => (
-                      <option key={pc.id} value={pc.id}>
-                        {pc.part_name} - {pc.color_name} (CHF{' '}
-                        {pc.purchase_price || 0})
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type='number'
-                    value={currentItem.quantity}
-                    onChange={(e) =>
-                      setCurrentItem({
-                        ...currentItem,
-                        quantity: e.target.value,
-                      })
-                    }
-                    className='input-field'
-                    placeholder='Qty'
-                    min='1'
-                  />
-                  <button
-                    type='button'
-                    onClick={addItemToList}
-                    className='btn-success'
-                  >
-                    Add
-                  </button>
-                </div>
-              </div>
-
-              {formData.items.length > 0 && (
-                <div className='border rounded-lg overflow-hidden'>
-                  <table className='min-w-full'>
-                    <thead className='bg-gray-50'>
-                      <tr>
-                        <th className='px-3 py-2 text-left text-xs font-medium text-gray-500'>
-                          Part
-                        </th>
-                        <th className='px-3 py-2 text-left text-xs font-medium text-gray-500'>
-                          Qty
-                        </th>
-                        <th className='px-3 py-2 text-left text-xs font-medium text-gray-500'>
-                          Notes
-                        </th>
-                        <th className='px-3 py-2 text-left text-xs font-medium text-gray-500'>
-                          Subtotal
-                        </th>
-                        <th className='px-3 py-2 text-right text-xs font-medium text-gray-500'></th>
-                      </tr>
-                    </thead>
-                    <tbody className='divide-y'>
-                      {formData.items.map((item, index) => (
-                        <tr key={index}>
-                          <td className='px-3 py-2 text-sm'>
-                            <p className='font-medium'>{item.part_name}</p>
+            {formData.items.length > 0 && (
+              <div className='border rounded-lg overflow-hidden'>
+                <table className='min-w-full'>
+                  <thead className='bg-gray-50'>
+                    <tr>
+                      <th className='px-3 py-2 text-left text-xs font-medium text-gray-500'>
+                        Part
+                      </th>
+                      <th className='px-3 py-2 text-center text-xs font-medium text-gray-500'>
+                        Qty
+                      </th>
+                      <th className='px-3 py-2 text-center text-xs font-medium text-gray-500'>
+                        Price
+                      </th>
+                      <th className='px-3 py-2 text-left text-xs font-medium text-gray-500'>
+                        Notes
+                      </th>
+                      <th className='px-3 py-2 text-center text-xs font-medium text-gray-500'>
+                        Subtotal
+                      </th>
+                      <th className='px-3 py-2'></th>
+                    </tr>
+                  </thead>
+                  <tbody className='divide-y'>
+                    {formData.items.map((item, index) => (
+                      <tr key={index}>
+                        <td className='px-3 py-2 text-sm'>
+                          <p className='font-medium'>{item.part_name}</p>
+                          {item.part_color && (
                             <p className='text-xs text-gray-500'>
-                              {item.color_name}
+                              {item.part_color}
                             </p>
-                          </td>
-                          <td className='px-3 py-2'>
-                            <input
-                              type='number'
-                              min='1'
-                              value={item.quantity}
-                              onChange={(e) => {
-                                const updatedItems = [...formData.items];
-                                updatedItems[index].quantity =
-                                  parseInt(e.target.value) || 1;
-                                setFormData({
-                                  ...formData,
-                                  items: updatedItems,
-                                });
-                              }}
-                              className='w-16 input-field text-sm'
-                            />
-                          </td>
-                          <td className='px-3 py-2'>
-                            <input
-                              type='text'
-                              value={item.notes || ''}
-                              onChange={(e) =>
-                                updateItemNotes(index, e.target.value)
-                              }
-                              className='w-full input-field text-sm'
-                              placeholder='Item notes...'
-                            />
-                          </td>
-                          <td className='px-3 py-2 text-sm'>
-                            CHF{' '}
-                            {(item.purchase_price * item.quantity).toFixed(2)}
-                          </td>
-                          <td className='px-3 py-2 text-right'>
-                            <button
-                              type='button'
-                              onClick={() => removeItemFromList(index)}
-                              className='text-red-600 text-sm'
-                            >
-                              ✕
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                      <tr className='bg-gray-50 font-semibold'>
-                        <td colSpan='3' className='px-3 py-2 text-right'>
-                          Total:
+                          )}
+                          {item.part_sku && (
+                            <p className='text-xs text-gray-400'>
+                              {item.part_sku}
+                            </p>
+                          )}
+                        </td>
+                        <td className='px-3 py-2 text-center'>
+                          <input
+                            type='number'
+                            min='1'
+                            value={item.quantity}
+                            onChange={(e) =>
+                              updateItemField(
+                                index,
+                                'quantity',
+                                parseInt(e.target.value) || 1,
+                              )
+                            }
+                            className='w-16 input-field text-center text-sm'
+                          />
+                        </td>
+                        <td className='px-3 py-2 text-center text-sm'>
+                          CHF {parseFloat(item.unit_price).toFixed(2)}
                         </td>
                         <td className='px-3 py-2'>
-                          CHF {calculateTotal(formData.items).toFixed(2)}
+                          <input
+                            type='text'
+                            value={item.notes || ''}
+                            onChange={(e) =>
+                              updateItemField(index, 'notes', e.target.value)
+                            }
+                            className='w-full input-field text-sm'
+                            placeholder='Item notes...'
+                          />
                         </td>
-                        <td></td>
+                        <td className='px-3 py-2 text-center text-sm font-medium'>
+                          CHF {(item.unit_price * item.quantity).toFixed(2)}
+                        </td>
+                        <td className='px-3 py-2 text-right'>
+                          <button
+                            type='button'
+                            onClick={() => removeItemFromList(index)}
+                            className='text-red-600 hover:text-red-800'
+                          >
+                            ✕
+                          </button>
+                        </td>
                       </tr>
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+                    ))}
+                    <tr className='bg-gray-50 font-semibold'>
+                      <td colSpan='4' className='px-3 py-2 text-right'>
+                        Total:
+                      </td>
+                      <td className='px-3 py-2 text-center'>
+                        CHF {calculateTotal(formData.items).toFixed(2)}
+                      </td>
+                      <td></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
 
-            <div className='flex justify-end space-x-3 pt-4 border-t'>
-              <button
-                type='button'
-                onClick={() => setShowCreateModal(false)}
-                className='btn-secondary'
-              >
-                Cancel
-              </button>
-              <button
-                type='submit'
-                className='btn-primary'
-                disabled={formData.items.length === 0}
-              >
-                Create Order
-              </button>
-            </div>
+          <div className='flex justify-end space-x-3 pt-4 border-t'>
+            <button
+              type='button'
+              onClick={() => {
+                setShowCreateModal(false);
+                resetForm();
+              }}
+              className='btn-secondary'
+            >
+              Cancel
+            </button>
+            <button
+              type='submit'
+              className='btn-primary'
+              disabled={formData.items.length === 0}
+            >
+              Create Order
+            </button>
           </div>
         </form>
       </Modal>
@@ -801,220 +817,198 @@ const Orders = () => {
         onClose={() => {
           setShowDeliveryModal(false);
           setSelectedOrder(null);
-          setDeliveryItems([]);
         }}
-        title={`Receive Delivery - ${selectedOrder?.order_number}`}
+        title={`Receive Delivery - ${selectedOrder?.order_number || '#' + selectedOrder?.id}`}
         size='xl'
       >
-        <form onSubmit={handleDeliverySubmit}>
-          <div className='space-y-4'>
-            <div className='bg-blue-50 p-3 rounded-lg text-sm text-blue-800'>
-              <strong>Instructions:</strong> Enter the quantity received for
-              each item. Items not fully delivered will be marked as backorder
-              or cancelled.
-            </div>
+        <form onSubmit={handleDeliverySubmit} className='space-y-4'>
+          <div className='bg-blue-50 p-3 rounded-lg text-sm text-blue-800'>
+            Enter the quantity received for each item. Remaining items will be
+            marked as backorder.
+          </div>
 
-            <div className='border rounded-lg overflow-hidden'>
-              <table className='min-w-full'>
-                <thead className='bg-gray-50'>
-                  <tr>
-                    <th className='px-3 py-2 text-left text-xs font-medium text-gray-500'>
-                      Part & Color
-                    </th>
-                    <th className='px-3 py-2 text-center text-xs font-medium text-gray-500'>
-                      Ordered
-                    </th>
-                    <th className='px-3 py-2 text-center text-xs font-medium text-gray-500'>
-                      Already Received
-                    </th>
-                    <th className='px-3 py-2 text-center text-xs font-medium text-gray-500'>
-                      Receiving Now
-                    </th>
-                    <th className='px-3 py-2 text-center text-xs font-medium text-gray-500'>
-                      Backorder
-                    </th>
-                    <th className='px-3 py-2 text-center text-xs font-medium text-gray-500'>
-                      Status
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className='divide-y'>
-                  {deliveryItems.map((item, index) => {
-                    const isFullyDelivered =
-                      (item.quantity_already_delivered || 0) >=
-                      item.quantity_ordered;
-
-                    return (
-                      <React.Fragment key={item.id}>
-                        <tr
-                          className={
-                            item.item_status === 'cancelled'
-                              ? 'bg-red-50'
-                              : isFullyDelivered
-                                ? 'bg-green-50'
-                                : ''
-                          }
-                        >
-                          <td className='px-3 py-2'>
-                            <p className='text-sm font-medium'>
-                              {item.part_name}
-                            </p>
+          <div className='border rounded-lg overflow-hidden'>
+            <table className='min-w-full'>
+              <thead className='bg-gray-50'>
+                <tr>
+                  <th className='px-3 py-2 text-left text-xs font-medium text-gray-500'>
+                    Part
+                  </th>
+                  <th className='px-3 py-2 text-center text-xs font-medium text-gray-500'>
+                    Ordered
+                  </th>
+                  <th className='px-3 py-2 text-center text-xs font-medium text-gray-500'>
+                    Already
+                  </th>
+                  <th className='px-3 py-2 text-center text-xs font-medium text-gray-500'>
+                    Receiving
+                  </th>
+                  <th className='px-3 py-2 text-center text-xs font-medium text-gray-500'>
+                    Backorder
+                  </th>
+                  <th className='px-3 py-2 text-center text-xs font-medium text-gray-500'>
+                    Status
+                  </th>
+                </tr>
+              </thead>
+              <tbody className='divide-y'>
+                {deliveryItems.map((item, index) => {
+                  const isComplete =
+                    (item.quantity_already_delivered || 0) >=
+                    item.quantity_ordered;
+                  return (
+                    <React.Fragment key={item.id}>
+                      <tr className={isComplete ? 'bg-green-50' : ''}>
+                        <td className='px-3 py-2'>
+                          <p className='text-sm font-medium'>
+                            {item.part_name}
+                          </p>
+                          {item.part_color && (
                             <p className='text-xs text-gray-500'>
-                              {item.color_name}
+                              {item.part_color}
                             </p>
-                          </td>
-                          <td className='px-3 py-2 text-center text-sm'>
-                            {item.quantity_ordered}
-                          </td>
-                          <td className='px-3 py-2 text-center text-sm'>
-                            <span
-                              className={
-                                item.quantity_already_delivered > 0
-                                  ? 'text-green-600 font-medium'
-                                  : 'text-gray-400'
-                              }
-                            >
-                              {item.quantity_already_delivered || 0}
-                            </span>
-                          </td>
-                          <td className='px-3 py-2 text-center'>
-                            {isFullyDelivered ? (
-                              <span className='text-green-600 text-sm'>
-                                ✓ Complete
-                              </span>
-                            ) : (
-                              <input
-                                type='number'
-                                min='0'
-                                value={item.quantity_receiving || 0}
-                                onChange={(e) =>
-                                  handleReceivingChange(index, e.target.value)
-                                }
-                                className='w-20 input-field text-center'
-                                disabled={item.item_status === 'cancelled'}
-                              />
-                            )}
-                          </td>
-                          <td className='px-3 py-2 text-center'>
-                            <span
-                              className={`px-2 py-1 rounded text-sm font-medium ${
-                                item.quantity_backorder > 0
-                                  ? 'bg-yellow-100 text-yellow-800'
-                                  : 'text-gray-400'
-                              }`}
-                            >
-                              {item.quantity_backorder}
-                            </span>
-                          </td>
-                          <td className='px-3 py-2 text-center'>
-                            <select
-                              value={item.item_status}
+                          )}
+                        </td>
+                        <td className='px-3 py-2 text-center text-sm'>
+                          {item.quantity_ordered}
+                        </td>
+                        <td className='px-3 py-2 text-center text-sm text-green-600'>
+                          {item.quantity_already_delivered || 0}
+                        </td>
+                        <td className='px-3 py-2 text-center'>
+                          {isComplete ? (
+                            <span className='text-green-600 text-sm'>✓</span>
+                          ) : (
+                            <input
+                              type='number'
+                              min='0'
+                              value={item.quantity_receiving || 0}
                               onChange={(e) =>
-                                handleItemStatusChange(index, e.target.value)
+                                handleReceivingChange(index, e.target.value)
                               }
-                              className={`text-xs px-2 py-1 rounded-full border-0 ${getItemStatusColor(
-                                item.item_status,
-                              )}`}
-                              disabled={isFullyDelivered}
-                            >
-                              <option value='delivered'>Delivered</option>
-                              <option value='partial'>Partial</option>
-                              <option value='backorder'>Backorder</option>
-                              <option value='cancelled'>Cancelled</option>
-                            </select>
+                              className='w-20 input-field text-center'
+                              disabled={item.item_status === 'cancelled'}
+                            />
+                          )}
+                        </td>
+                        <td className='px-3 py-2 text-center'>
+                          <span
+                            className={
+                              item.quantity_backorder > 0
+                                ? 'text-orange-600 font-medium'
+                                : 'text-gray-400'
+                            }
+                          >
+                            {item.quantity_backorder}
+                          </span>
+                        </td>
+                        <td className='px-3 py-2 text-center'>
+                          <select
+                            value={item.item_status}
+                            onChange={(e) =>
+                              handleItemStatusChange(index, e.target.value)
+                            }
+                            className={`text-xs px-2 py-1 rounded-full border-0 ${getItemStatusColor(item.item_status)}`}
+                            disabled={isComplete}
+                          >
+                            <option value='delivered'>Delivered</option>
+                            <option value='partial'>Partial</option>
+                            <option value='backorder'>Backorder</option>
+                            <option value='cancelled'>Cancelled</option>
+                          </select>
+                        </td>
+                      </tr>
+                      {/* Show item notes if present */}
+                      {item.notes && (
+                        <tr className='bg-blue-50'>
+                          <td
+                            colSpan='6'
+                            className='px-3 py-1 text-xs text-blue-700'
+                          >
+                            📝 {item.notes}
                           </td>
                         </tr>
-                        {item.notes && (
-                          <tr className='bg-blue-50'>
-                            <td
-                              colSpan='6'
-                              className='px-3 py-1 text-xs text-blue-700'
-                            >
-                              📝 {item.notes}
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
 
-            {/* Summary */}
-            <div className='grid grid-cols-4 gap-4 bg-gray-50 p-4 rounded-lg'>
-              <div className='text-center'>
-                <p className='text-sm text-gray-600'>Total Ordered</p>
-                <p className='text-xl font-bold text-gray-900'>
-                  {deliveryItems.reduce(
-                    (sum, item) => sum + item.quantity_ordered,
-                    0,
-                  )}
-                </p>
-              </div>
-              <div className='text-center'>
-                <p className='text-sm text-gray-600'>Already Received</p>
-                <p className='text-xl font-bold text-blue-600'>
-                  {deliveryItems.reduce(
-                    (sum, item) => sum + (item.quantity_already_delivered || 0),
-                    0,
-                  )}
-                </p>
-              </div>
-              <div className='text-center'>
-                <p className='text-sm text-gray-600'>Receiving Now</p>
-                <p className='text-xl font-bold text-green-600'>
-                  {deliveryItems.reduce(
-                    (sum, item) => sum + (item.quantity_receiving || 0),
-                    0,
-                  )}
-                </p>
-              </div>
-              <div className='text-center'>
-                <p className='text-sm text-gray-600'>Remaining Backorder</p>
-                <p className='text-xl font-bold text-orange-600'>
-                  {deliveryItems.reduce(
-                    (sum, item) => sum + item.quantity_backorder,
-                    0,
-                  )}
-                </p>
-              </div>
+          {/* Summary */}
+          <div className='grid grid-cols-4 gap-4 bg-gray-50 p-4 rounded-lg'>
+            <div className='text-center'>
+              <p className='text-sm text-gray-600'>Ordered</p>
+              <p className='text-xl font-bold'>
+                {deliveryItems.reduce(
+                  (s, i) => s + Number(i.quantity_ordered),
+                  0,
+                )}
+              </p>
             </div>
+            <div className='text-center'>
+              <p className='text-sm text-gray-600'>Already</p>
+              <p className='text-xl font-bold text-blue-600'>
+                {deliveryItems.reduce(
+                  (s, i) => s + Number(i.quantity_already_delivered || 0),
+                  0,
+                )}
+              </p>
+            </div>
+            <div className='text-center'>
+              <p className='text-sm text-gray-600'>Receiving</p>
+              <p className='text-xl font-bold text-green-600'>
+                {deliveryItems.reduce(
+                  (s, i) => s + Number(i.quantity_receiving || 0),
+                  0,
+                )}
+              </p>
+            </div>
+            <div className='text-center'>
+              <p className='text-sm text-gray-600'>Backorder</p>
+              <p className='text-xl font-bold text-orange-600'>
+                {deliveryItems.reduce(
+                  (s, i) => s + Number(i.quantity_backorder),
+                  0,
+                )}
+              </p>
+            </div>
+          </div>
 
-            <div>
-              <label className='block text-sm font-medium text-gray-700 mb-1'>
-                Delivery Notes
-              </label>
-              <textarea
-                value={deliveryNotes}
-                onChange={(e) => setDeliveryNotes(e.target.value)}
-                className='input-field'
-                rows='2'
-                placeholder='Notes about this delivery...'
-              />
-            </div>
+          <div>
+            <label className='block text-sm font-medium text-gray-700 mb-1'>
+              Delivery Notes
+            </label>
+            <textarea
+              value={deliveryNotes}
+              onChange={(e) => setDeliveryNotes(e.target.value)}
+              className='input-field'
+              rows='2'
+              placeholder='Notes about this delivery...'
+            />
+          </div>
 
-            <div className='flex justify-end space-x-3 pt-4 border-t'>
-              <button
-                type='button'
-                onClick={() => setShowDeliveryModal(false)}
-                className='btn-secondary'
-              >
-                Cancel
-              </button>
-              <button type='submit' className='btn-primary'>
-                Confirm Delivery (CHF {calculateDeliveryTotal().toFixed(2)})
-              </button>
-            </div>
+          <div className='flex justify-end space-x-3 pt-4 border-t'>
+            <button
+              type='button'
+              onClick={() => setShowDeliveryModal(false)}
+              className='btn-secondary'
+            >
+              Cancel
+            </button>
+            <button type='submit' className='btn-primary'>
+              Confirm Delivery
+            </button>
           </div>
         </form>
       </Modal>
 
-      {/* View Order Modal */}
+      {/* View Modal */}
       <Modal
         isOpen={showViewModal}
         onClose={() => setShowViewModal(false)}
-        title={`Order Details - ${orderDetails?.order_number}`}
+        title={`Order - ${orderDetails?.order_number || '#' + orderDetails?.id}`}
         size='lg'
       >
         {orderDetails && (
@@ -1023,9 +1017,7 @@ const Orders = () => {
               <div>
                 <p className='text-xs text-gray-600'>Status</p>
                 <span
-                  className={`inline-block mt-1 px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(
-                    orderDetails.status,
-                  )}`}
+                  className={`inline-block mt-1 px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(orderDetails.status)}`}
                 >
                   {formatStatus(orderDetails.status)}
                 </span>
@@ -1038,7 +1030,9 @@ const Orders = () => {
               </div>
               <div>
                 <p className='text-xs text-gray-600'>Created By</p>
-                <p className='font-semibold'>{orderDetails.created_by_name}</p>
+                <p className='font-semibold'>
+                  {orderDetails.created_by_username || '-'}
+                </p>
               </div>
               <div>
                 <p className='text-xs text-gray-600'>Total</p>
@@ -1056,7 +1050,7 @@ const Orders = () => {
                       Part
                     </th>
                     <th className='px-3 py-2 text-center text-xs font-medium text-gray-500'>
-                      Ordered
+                      Qty
                     </th>
                     <th className='px-3 py-2 text-center text-xs font-medium text-gray-500'>
                       Delivered
@@ -1074,37 +1068,42 @@ const Orders = () => {
                     <React.Fragment key={item.id}>
                       <tr>
                         <td className='px-3 py-2 text-sm'>
-                          {item.part_name} - {item.color_name}
+                          {item.part_name}{' '}
+                          {item.part_color && (
+                            <span className='text-gray-500'>
+                              ({item.part_color})
+                            </span>
+                          )}
                         </td>
                         <td className='px-3 py-2 text-center text-sm'>
-                          {item.quantity_ordered}
+                          {item.total_quantity}
                         </td>
-                        <td className='px-3 py-2 text-center text-sm text-green-600 font-medium'>
+                        <td className='px-3 py-2 text-center text-sm text-green-600'>
                           {item.quantity_delivered || 0}
                         </td>
                         <td className='px-3 py-2 text-center text-sm'>
-                          {item.quantity_backorder > 0 && (
-                            <span className='text-orange-600 font-medium'>
+                          {item.quantity_backorder > 0 ? (
+                            <span className='text-orange-600'>
                               {item.quantity_backorder}
                             </span>
+                          ) : (
+                            '-'
                           )}
-                          {!item.quantity_backorder && '-'}
                         </td>
                         <td className='px-3 py-2 text-center'>
                           <span
-                            className={`px-2 py-1 text-xs rounded-full ${getItemStatusColor(
-                              item.item_status,
-                            )}`}
+                            className={`px-2 py-1 text-xs rounded-full ${getItemStatusColor(item.item_status)}`}
                           >
                             {formatStatus(item.item_status)}
                           </span>
                         </td>
                       </tr>
+                      {/* Show item notes if present */}
                       {item.notes && (
-                        <tr className='bg-gray-50'>
+                        <tr className='bg-blue-50'>
                           <td
                             colSpan='5'
-                            className='px-3 py-1 text-xs text-gray-600'
+                            className='px-3 py-1 text-xs text-blue-700'
                           >
                             📝 {item.notes}
                           </td>
@@ -1118,8 +1117,10 @@ const Orders = () => {
 
             {orderDetails.notes && (
               <div>
-                <p className='text-sm font-medium text-gray-700 mb-1'>Notes</p>
-                <div className='bg-gray-50 p-3 rounded-lg text-sm whitespace-pre-wrap max-h-40 overflow-y-auto'>
+                <p className='text-sm font-medium text-gray-700 mb-1'>
+                  Order Notes
+                </p>
+                <div className='bg-gray-50 p-3 rounded-lg text-sm'>
                   {orderDetails.notes}
                 </div>
               </div>
@@ -1143,7 +1144,7 @@ const Orders = () => {
         onClose={() => setShowDeleteDialog(false)}
         onConfirm={handleDelete}
         title='Cancel Order'
-        message={`Are you sure you want to cancel order "${selectedOrder?.order_number}"?`}
+        message={`Cancel order "${selectedOrder?.order_number || '#' + selectedOrder?.id}"?`}
       />
     </div>
   );

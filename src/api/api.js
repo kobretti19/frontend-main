@@ -2,7 +2,6 @@ import axios from 'axios';
 
 const API_BASE_URL = 'http://localhost:3001/api';
 
-// Create axios instance
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -19,12 +18,10 @@ api.interceptors.request.use(
     }
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error),
 );
 
-// Handle 401 errors (unauthorized)
+// Handle 401 errors
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -34,7 +31,7 @@ api.interceptors.response.use(
       window.location.href = '/login';
     }
     return Promise.reject(error);
-  }
+  },
 );
 
 // Auth API
@@ -46,94 +43,39 @@ export const authAPI = {
   changePassword: (data) => api.put('/auth/change-password', data),
 };
 
-export const brandsAPI = {
-  getAll: () => api.get('/brands'),
-  create: (data) => api.post('/brands', data),
-  update: (id, data) => api.put(`/brands/${id}`, data),
-  delete: (id) => api.delete(`/brands/${id}`),
-};
-
-export const categoriesAPI = {
-  getAll: () => api.get('/categories'),
-  create: (data) => api.post('/categories', data),
-  update: (id, data) => api.put(`/categories/${id}`, data),
-  delete: (id) => api.delete(`/categories/${id}`),
-};
-
-export const colorsAPI = {
-  getAll: () => api.get('/colors'),
-  create: (data) => api.post('/colors', data),
-  update: (id, data) => api.put(`/colors/${id}`, data),
-  delete: (id) => api.delete(`/colors/${id}`),
-};
-
-export const partsCategoriesAPI = {
-  getAll: () => api.get('/parts-categories'),
-  create: (data) => api.post('/parts-categories', data),
-  update: (id, data) => api.put(`/parts-categories/${id}`, data),
-  delete: (id) => api.delete(`/parts-categories/${id}`),
-};
-
+// Parts API (simplified - includes color, category, supplier)
 export const partsAPI = {
   getAll: () => api.get('/parts'),
-  getDetailed: () => api.get('/parts/detailed'),
-  getInventory: () => api.get('/parts/inventory'),
+  getById: (id) => api.get(`/parts/${id}`),
+  getLowStock: () => api.get('/parts/low-stock'),
+  getColors: () => api.get('/parts/colors'),
+  getCategories: () => api.get('/parts/categories'),
+  getSuppliers: () => api.get('/parts/suppliers'),
+  getByCategory: (category) =>
+    api.get(`/parts/category/${encodeURIComponent(category)}`),
+  getByColor: (color) => api.get(`/parts/color/${encodeURIComponent(color)}`),
+  getBySupplier: (supplier) =>
+    api.get(`/parts/supplier/${encodeURIComponent(supplier)}`),
   create: (data) => api.post('/parts', data),
   update: (id, data) => api.put(`/parts/${id}`, data),
+  updateQuantity: (id, data) => api.patch(`/parts/${id}/quantity`, data),
   delete: (id) => api.delete(`/parts/${id}`),
 };
 
-export const partsColorsAPI = {
-  getAll: () => api.get('/parts-colors'),
-  getLowStock: () => api.get('/parts-colors/low-stock'),
-  getByPart: (partId) => api.get(`/parts-colors/part/${partId}`),
-  create: (data) => api.post('/parts-colors', data),
-  update: (id, data) => api.put(`/parts-colors/${id}`, data),
-  updateQuantity: (id, data) => api.patch(`/parts-colors/${id}/quantity`, data),
-  delete: (id) => api.delete(`/parts-colors/${id}`),
-};
-
+// Equipment API (simplified - brand/category are columns)
 export const equipmentAPI = {
   getAll: () => api.get('/equipment'),
-  getDetailed: () => api.get('/equipment/detailed'),
-  getInventory: () => api.get('/equipment/inventory'),
-  getLowStock: () => api.get('/equipment/low-stock'),
   getById: (id) => api.get(`/equipment/${id}`),
+  getBrands: () => api.get('/equipment/brands'),
+  getCategories: () => api.get('/equipment/categories'),
   create: (data) => api.post('/equipment', data),
   update: (id, data) => api.put(`/equipment/${id}`, data),
   delete: (id) => api.delete(`/equipment/${id}`),
-};
-
-export const inventoryAPI = {
-  getTransactions: () => api.get('/inventory/transactions'),
-  getByPartColor: (partColorId) =>
-    api.get(`/inventory/transactions/${partColorId}`),
-  createTransaction: (data) => api.post('/inventory/transactions', data),
-  getStats: () => api.get('/inventory/stats'),
-};
-
-
-// Orders API
-export const ordersAPI = {
-  getAll: () => api.get('/orders'),
-  getMyOrders: () => api.get('/orders/my-orders'),
-  getStats: () => api.get('/orders/stats'),
-  getById: (id) => api.get(`/orders/${id}`),
-  create: (data) => api.post('/orders', data),
-  update: (id, data) => api.put(`/orders/${id}`, data),
-  updateStatus: (id, data) => api.put(`/orders/${id}/status`, data),
-  updateOrderItems: (orderId, payload) =>
-    api.put(`/orders/${orderId}/items`, payload),
-  delete: (id) => api.delete(`/orders/${id}`),
-};
-
-// Stock API
-export const stockAPI = {
-  getMovements: () => api.get('/stock/movements'),
-  getLevels: () => api.get('/stock/levels'),
-  getAlerts: () => api.get('/stock/alerts'),
-  addStock: (data) => api.post('/stock/add', data),
-  adjustStock: (data) => api.post('/stock/adjust', data),
+  addPart: (equipmentId, data) =>
+    api.post(`/equipment/${equipmentId}/parts`, data),
+  removePart: (equipmentId, partId) =>
+    api.delete(`/equipment/${equipmentId}/parts/${partId}`),
+  produce: (equipmentId) => api.post(`/equipment/${equipmentId}/produce`),
 };
 
 // Equipment Templates API
@@ -141,9 +83,34 @@ export const equipmentTemplatesAPI = {
   getAll: () => api.get('/equipment-templates'),
   getById: (id) => api.get(`/equipment-templates/${id}`),
   create: (data) => api.post('/equipment-templates', data),
-  createFromEquipment: (data) => api.post('/equipment-templates/from-equipment', data),
+  createFromEquipment: (data) =>
+    api.post('/equipment-templates/from-equipment', data),
+  createEquipment: (templateId, data) =>
+    api.post(`/equipment-templates/${templateId}/create-equipment`, data),
   update: (id, data) => api.put(`/equipment-templates/${id}`, data),
   delete: (id) => api.delete(`/equipment-templates/${id}`),
+};
+
+// Orders API
+export const ordersAPI = {
+  getAll: () => api.get('/orders'),
+  getById: (id) => api.get(`/orders/${id}`),
+  getStats: () => api.get('/orders/stats'),
+  create: (data) => api.post('/orders', data),
+  update: (id, data) => api.put(`/orders/${id}`, data),
+  updateStatus: (id, data) => api.put(`/orders/${id}/status`, data),
+  delete: (id) => api.delete(`/orders/${id}`),
+};
+
+// Stock API
+export const stockAPI = {
+  getMovements: () => api.get('/stock/movements'),
+  getMovementsByPart: (partId) => api.get(`/stock/movements/${partId}`),
+  getLevels: () => api.get('/stock/levels'),
+  getAlerts: () => api.get('/stock/alerts'),
+  getSummary: () => api.get('/stock/summary'),
+  addStock: (data) => api.post('/stock/add', data),
+  adjustStock: (data) => api.post('/stock/adjust', data),
 };
 
 export default api;

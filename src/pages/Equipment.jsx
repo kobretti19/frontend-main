@@ -2,168 +2,229 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   fetchEquipment,
+  fetchBrands,
+  fetchCategories,
   createEquipment,
   updateEquipment,
   deleteEquipment,
 } from '../redux/slices/equipmentSlice';
-import { fetchCategories } from '../redux/slices/categoriesSlice';
-import { fetchBrands } from '../redux/slices/brandsSlice';
 import { fetchParts } from '../redux/slices/partsSlice';
-import { fetchColors } from '../redux/slices/colorsSlice';
-import { fetchPartsColors } from '../redux/slices/partsColorsSlice';
 import {
   fetchTemplates,
-  createTemplate,
   createTemplateFromEquipment,
   deleteTemplate,
 } from '../redux/slices/equipmentTemplatesSlice';
 import EquipmentTable from '../components/Tables/EquipmentTable';
-import Modal from '../components/Common/Modal';
-import LoadingSpinner from '../components/Common/LoadingSpinner';
+import {
+  Modal,
+  LoadingSpinner,
+  PartSelector,
+  PartsListTable,
+  TemplateSelector,
+  StatsCard,
+  EmptyState,
+  DatalistInput,
+} from '../components/Common';
 import { useSearch } from '../context/SearchContext';
+import { useNavigate } from 'react-router-dom';
 
 const Equipment = () => {
   const dispatch = useDispatch();
   const { searchTerm } = useSearch();
+  const navigate = useNavigate();
 
-  const equipment = useSelector((state) => state.equipment?.items || []);
-  const loading = useSelector((state) => state.equipment?.loading || false);
-  const categories = useSelector((state) => state.categories?.items || []);
-  const brands = useSelector((state) => state.brands?.items || []);
-  const parts = useSelector((state) => state.parts?.items || []);
-  const colors = useSelector((state) => state.colors?.items || []);
-  const partsColors = useSelector((state) => state.partsColors?.items || []);
-  
-  // Database templates from Redux
-  const savedTemplates = useSelector((state) => state.equipmentTemplates?.items || []);
-  const templatesLoading = useSelector((state) => state.equipmentTemplates?.loading || false);
+  // Redux state
+  const {
+    items: equipment,
+    brands,
+    categories,
+    loading,
+  } = useSelector((state) => state.equipment);
+  const { items: parts } = useSelector((state) => state.parts);
+  const { items: templates, loading: templatesLoading } = useSelector(
+    (state) => state.equipmentTemplates,
+  );
 
+  // Modals
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [showSaveTemplateModal, setShowSaveTemplateModal] = useState(false);
+
+  // State
   const [selectedEquipment, setSelectedEquipment] = useState(null);
   const [templateName, setTemplateName] = useState('');
+  const [saveAsTemplate, setSaveAsTemplate] = useState(false);
+
+  // Filters
   const [filterYear, setFilterYear] = useState('');
   const [filterMonth, setFilterMonth] = useState('');
   const [filterWeek, setFilterWeek] = useState('');
-  const [formData, setFormData] = useState({
+
+  // Form
+  const initialFormData = {
     model: '',
-    category_id: '',
-    brand_id: '',
+    brand: '',
+    category: '',
     serial_number: '',
+    article_id: '',
     year_manufactured: new Date().getFullYear(),
     production_date: '',
     status: 'active',
+    template_id: '',
     parts: [],
-  });
-  const [currentPart, setCurrentPart] = useState({
-    part_id: '',
-    color_id: '',
-    quantity: 1,
-    notes: '',
-  });
+  };
+  const [formData, setFormData] = useState(initialFormData);
 
+  // Load data
   const loadData = useCallback(() => {
-    dispatch(fetchEquipment()).catch((err) =>
-      console.error('Failed to fetch equipment:', err)
-    );
+    dispatch(fetchEquipment());
   }, [dispatch]);
 
   useEffect(() => {
     loadData();
-    dispatch(fetchCategories()).catch((err) =>
-      console.error('Failed to fetch categories:', err)
-    );
-    dispatch(fetchBrands()).catch((err) =>
-      console.error('Failed to fetch brands:', err)
-    );
-    dispatch(fetchParts()).catch((err) =>
-      console.error('Failed to fetch parts:', err)
-    );
-    dispatch(fetchColors()).catch((err) =>
-      console.error('Failed to fetch colors:', err)
-    );
-    dispatch(fetchPartsColors()).catch((err) =>
-      console.error('Failed to fetch parts colors:', err)
-    );
-    dispatch(fetchTemplates()).catch((err) =>
-      console.error('Failed to fetch templates:', err)
-    );
+    dispatch(fetchBrands());
+    dispatch(fetchCategories());
+    dispatch(fetchParts());
+    dispatch(fetchTemplates());
   }, [dispatch, loadData]);
 
-  // Save template from existing equipment to database
-  const saveAsTemplate = async (item) => {
-    setSelectedEquipment(item);
-    setTemplateName(item.model || '');
-    setShowSaveTemplateModal(true);
+  // Helpers
+  const getWeekNumber = (date) => {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+    const yearStart = new Date(d.getFullYear(), 0, 1);
+    return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
   };
 
-  const handleSaveTemplate = async () => {
-    if (!templateName.trim()) {
-      alert('Please enter a template name');
-      return;
+  const currentDate = new Date();
+  const currentMonth = currentDate.getMonth();
+  const currentYear = currentDate.getFullYear();
+  const currentWeekNumber = getWeekNumber(currentDate);
+
+  // Filter logic
+  const filteredEquipment = equipment.filter((item) => {
+    const matchesSearch =
+      item.model?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.serial_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.category?.toLowerCase().includes(searchTerm.toLowerCase());
+
+    if (!matchesSearch) return false;
+
+    const itemDate = new Date(item.created_at);
+    if (filterYear && itemDate.getFullYear().toString() !== filterYear)
+      return false;
+    if (filterMonth && (itemDate.getMonth() + 1).toString() !== filterMonth)
+      return false;
+
+    if (filterWeek) {
+      const itemWeek = getWeekNumber(itemDate);
+      if (
+        filterWeek === 'current' &&
+        (itemWeek !== currentWeekNumber ||
+          itemDate.getFullYear() !== currentYear)
+      )
+        return false;
+      if (filterWeek === 'last') {
+        const lastWeek = currentWeekNumber === 1 ? 52 : currentWeekNumber - 1;
+        if (itemWeek !== lastWeek) return false;
+      }
+      if (
+        !['current', 'last'].includes(filterWeek) &&
+        itemWeek.toString() !== filterWeek
+      )
+        return false;
     }
 
-    try {
-      await dispatch(createTemplateFromEquipment({
-        equipment_id: selectedEquipment.id,
-        template_name: templateName.trim(),
-      })).unwrap();
-      
-      alert(`Template "${templateName}" saved successfully!`);
-      setShowSaveTemplateModal(false);
-      setTemplateName('');
-      setSelectedEquipment(null);
-    } catch (err) {
-      alert('Failed to save template: ' + (err.message || err));
+    return true;
+  });
+
+  // Stats
+  const stats = {
+    total: equipment.length,
+    thisWeek: equipment.filter((i) => {
+      const d = new Date(i.created_at);
+      return (
+        getWeekNumber(d) === currentWeekNumber &&
+        d.getFullYear() === currentYear
+      );
+    }).length,
+    thisMonth: equipment.filter((i) => {
+      const d = new Date(i.created_at);
+      return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+    }).length,
+    thisYear: equipment.filter(
+      (i) => new Date(i.created_at).getFullYear() === currentYear,
+    ).length,
+    filtered: filteredEquipment.length,
+  };
+
+  // Handlers
+  const resetForm = () => {
+    setFormData(initialFormData);
+    setSaveAsTemplate(false);
+  };
+
+  const handleTemplateSelect = (templateId) => {
+    if (templateId) {
+      const template = templates.find((t) => t.id === parseInt(templateId));
+      if (template) {
+        setFormData({
+          ...formData,
+          template_id: templateId,
+          model: template.name,
+          brand: template.brand || '',
+          category: template.category || '',
+          parts: [],
+        });
+      }
+    } else {
+      setFormData({ ...formData, template_id: '', parts: [] });
     }
   };
 
   const handleCreate = async (e) => {
     e.preventDefault();
 
-    if (formData.parts.length === 0) {
-      alert('Please add at least one part to the equipment');
+    if (!formData.template_id && formData.parts.length === 0) {
+      alert('Please select a template or add at least one part');
       return;
     }
 
     try {
-      await dispatch(createEquipment(formData)).unwrap();
+      const payload = {
+        model: formData.model,
+        serial_number: formData.serial_number || null,
+        brand: formData.brand || null,
+        category: formData.category || null,
+        article_id: formData.article_id || null,
+        template_id: formData.template_id || null,
+        production_date: formData.production_date || null,
+        year_manufactured: formData.year_manufactured || null,
+        parts: formData.parts.map((p) => ({
+          part_id: p.part_id,
+          quantity_needed: p.quantity_needed,
+          notes: p.notes || '',
+          part_name: p.part_name,
+          part_color: p.part_color,
+          part_sku: p.part_sku,
+        })),
+        save_as_template: saveAsTemplate,
+        template_name: saveAsTemplate ? formData.model : null,
+      };
 
-      // Ask to save as template
-      if (window.confirm(`Save "${formData.model}" as a template for future use?`)) {
-        try {
-          await dispatch(createTemplate({
-            name: formData.model,
-            description: `Template for ${formData.model}`,
-            category_id: formData.category_id || null,
-            brand_id: formData.brand_id || null,
-            parts_data: formData.parts,
-          })).unwrap();
-          alert('Template saved successfully!');
-        } catch (err) {
-          console.error('Failed to save template:', err);
-          alert('Equipment created but failed to save template: ' + err);
-        }
-      }
+      console.log('Creating equipment with payload:', payload); // Debug
+
+      await dispatch(createEquipment(payload)).unwrap();
 
       setShowCreateModal(false);
-      setFormData({
-        model: '',
-        category_id: '',
-        brand_id: '',
-        serial_number: '',
-        year_manufactured: new Date().getFullYear(),
-        production_date: '',
-        status: 'active',
-        parts: [],
-      });
-      setCurrentPart({ part_id: '', color_id: '', quantity: 1, notes: '' });
+      resetForm();
       loadData();
+      if (saveAsTemplate) dispatch(fetchTemplates());
     } catch (err) {
-      console.error('Failed to create equipment:', err);
-      alert(`Failed to create equipment: ${err.message || 'Unknown error'}`);
+      alert(`Failed to create equipment: ${err.message || err}`);
     }
   };
 
@@ -172,21 +233,17 @@ const Equipment = () => {
       await dispatch(updateEquipment({ id, data })).unwrap();
       loadData();
     } catch (err) {
-      console.error('Failed to update:', err);
       alert('Failed to update: ' + err.message);
     }
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this equipment?')) {
+    if (!window.confirm('Are you sure you want to delete this equipment?'))
       return;
-    }
-
     try {
       await dispatch(deleteEquipment(id)).unwrap();
       loadData();
     } catch (err) {
-      console.error('Failed to delete:', err);
       alert('Failed to delete: ' + err.message);
     }
   };
@@ -195,123 +252,40 @@ const Equipment = () => {
     try {
       const { equipmentAPI } = await import('../api/api');
       const response = await equipmentAPI.getById(item.id);
-
-      if (response.data.success && response.data.data) {
-        setSelectedEquipment(response.data.data);
-      } else {
-        setSelectedEquipment(item);
-      }
-    } catch (err) {
-      console.error('Failed to fetch equipment details:', err);
+      setSelectedEquipment(response.data.success ? response.data.data : item);
+    } catch {
       setSelectedEquipment(item);
     }
     setShowDetailsModal(true);
   };
 
-  const handleModelChange = (model) => {
-    setFormData({ ...formData, model });
+  const handleSaveAsTemplate = (item) => {
+    setSelectedEquipment(item);
+    setTemplateName(item.model || '');
+    setShowSaveTemplateModal(true);
+  };
 
-    // Check if template exists for this model in database
-    const template = savedTemplates.find(t => t.name.toLowerCase() === model.toLowerCase());
-    if (template && formData.parts.length === 0) {
-      if (window.confirm(`Load saved parts from template "${template.name}"?`)) {
-        setFormData({
-          ...formData,
-          model,
-          category_id: template.category_id || formData.category_id,
-          brand_id: template.brand_id || formData.brand_id,
-          parts: template.parts_data || [],
-        });
-      }
+  const confirmSaveTemplate = async () => {
+    if (!templateName.trim()) {
+      alert('Please enter a template name');
+      return;
+    }
+    try {
+      await dispatch(
+        createTemplateFromEquipment({
+          equipment_id: selectedEquipment.id,
+          name: templateName.trim(),
+        }),
+      ).unwrap();
+      alert(`Template "${templateName}" saved!`);
+      setShowSaveTemplateModal(false);
+      setTemplateName('');
+    } catch (err) {
+      alert('Failed to save template: ' + err);
     }
   };
 
-  const addPartToList = () => {
-    if (!currentPart.part_id) {
-      alert('Please select a part');
-      return;
-    }
-
-    if (!currentPart.color_id) {
-      alert('Please select a color');
-      return;
-    }
-
-    if (!currentPart.quantity || currentPart.quantity <= 0) {
-      alert('Please enter a valid quantity');
-      return;
-    }
-
-    const part = parts.find((p) => p.id === parseInt(currentPart.part_id));
-    const color = colors.find((c) => c.id === parseInt(currentPart.color_id));
-
-    const partColor = partsColors.find(
-      (pc) =>
-        pc.part_id === parseInt(currentPart.part_id) &&
-        pc.color_id === parseInt(currentPart.color_id)
-    );
-
-    if (!partColor) {
-      alert(
-        `Part "${part?.name}" with color "${color?.name}" is not available in inventory. Please add it to Parts Colors first.`
-      );
-      return;
-    }
-
-    if (partColor.quantity < parseInt(currentPart.quantity)) {
-      alert(
-        `Insufficient stock! Available: ${partColor.quantity}, Needed: ${currentPart.quantity}`
-      );
-      return;
-    }
-
-    const exists = formData.parts.find(
-      (p) =>
-        p.part_id === parseInt(currentPart.part_id) &&
-        p.color_id === parseInt(currentPart.color_id)
-    );
-
-    if (exists) {
-      alert('This part-color combination is already added');
-      return;
-    }
-
-    const newPart = {
-      part_id: parseInt(currentPart.part_id),
-      color_id: parseInt(currentPart.color_id),
-      quantity: parseInt(currentPart.quantity),
-      notes: currentPart.notes,
-      part_name: part?.name,
-      color_name: color?.name,
-    };
-
-    setFormData({
-      ...formData,
-      parts: [...formData.parts, newPart],
-    });
-
-    setCurrentPart({ part_id: '', color_id: '', quantity: 1, notes: '' });
-  };
-
-  const removePartFromList = (index) => {
-    setFormData({
-      ...formData,
-      parts: formData.parts.filter((_, i) => i !== index),
-    });
-  };
-
-  const loadTemplate = (template) => {
-    setFormData({
-      ...formData,
-      model: template.name,
-      category_id: template.category_id || '',
-      brand_id: template.brand_id || '',
-      parts: template.parts_data || [],
-    });
-    setShowTemplateModal(false);
-    setShowCreateModal(true);
-  };
-
+  console.log(selectedEquipment, 'selectedEquipment');
   const handleDeleteTemplate = async (template) => {
     if (window.confirm(`Delete template "${template.name}"?`)) {
       try {
@@ -322,95 +296,18 @@ const Equipment = () => {
     }
   };
 
-  // Helper function to get week number of a date
-  const getWeekNumber = (date) => {
-    const d = new Date(date);
-    d.setHours(0, 0, 0, 0);
-    d.setDate(d.getDate() + 4 - (d.getDay() || 7));
-    const yearStart = new Date(d.getFullYear(), 0, 1);
-    const weekNo = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
-    return weekNo;
+  const addPart = (part) => {
+    setFormData({ ...formData, parts: [...formData.parts, part] });
   };
 
-  // Calculate date values first
-  const currentDate = new Date();
-  const currentMonth = currentDate.getMonth();
-  const currentYear = currentDate.getFullYear();
-  const currentWeekNumber = getWeekNumber(currentDate);
+  const removePart = (index) => {
+    setFormData({
+      ...formData,
+      parts: formData.parts.filter((_, i) => i !== index),
+    });
+  };
 
-  // Filter equipment
-  const filteredEquipment = equipment.filter((item) => {
-    const matchesSearch =
-      item.model?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.serial_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.brand_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.category_name?.toLowerCase().includes(searchTerm.toLowerCase());
-
-    if (!matchesSearch) return false;
-
-    const itemDate = new Date(item.created_at);
-
-    if (filterYear) {
-      const itemYear = itemDate.getFullYear().toString();
-      if (itemYear !== filterYear) return false;
-    }
-
-    if (filterMonth) {
-      const itemMonth = (itemDate.getMonth() + 1).toString();
-      if (itemMonth !== filterMonth) return false;
-    }
-
-    if (filterWeek) {
-      if (filterWeek === 'current') {
-        const itemWeek = getWeekNumber(itemDate);
-        const itemYear = itemDate.getFullYear();
-        if (itemWeek !== currentWeekNumber || itemYear !== currentYear)
-          return false;
-      } else if (filterWeek === 'last') {
-        const lastWeek = currentWeekNumber === 1 ? 52 : currentWeekNumber - 1;
-        const itemWeek = getWeekNumber(itemDate);
-        const itemYear = itemDate.getFullYear();
-        const expectedYear =
-          currentWeekNumber === 1 ? currentYear - 1 : currentYear;
-        if (itemWeek !== lastWeek || itemYear !== expectedYear) return false;
-      } else {
-        const itemWeek = getWeekNumber(itemDate);
-        if (itemWeek.toString() !== filterWeek) return false;
-      }
-    }
-
-    return true;
-  });
-
-  // Calculate stats
-  const createdThisMonth = equipment.filter((item) => {
-    const itemDate = new Date(item.created_at);
-    return (
-      itemDate.getMonth() === currentMonth &&
-      itemDate.getFullYear() === currentYear
-    );
-  }).length;
-
-  const createdThisYear = equipment.filter((item) => {
-    const itemDate = new Date(item.created_at);
-    return itemDate.getFullYear() === currentYear;
-  }).length;
-
-  const createdThisWeek = equipment.filter((item) => {
-    const itemDate = new Date(item.created_at);
-    return (
-      getWeekNumber(itemDate) === currentWeekNumber &&
-      itemDate.getFullYear() === currentYear
-    );
-  }).length;
-
-  // Get unique years from equipment
-  const availableYears = [
-    ...new Set(
-      equipment.map((item) => new Date(item.created_at).getFullYear())
-    ),
-  ].sort((a, b) => b - a);
-
+  // Filter options
   const months = [
     { value: '1', label: 'January' },
     { value: '2', label: 'February' },
@@ -426,8 +323,22 @@ const Equipment = () => {
     { value: '12', label: 'December' },
   ];
 
+  const availableYears = [
+    ...new Set(equipment.map((i) => new Date(i.created_at).getFullYear())),
+  ].sort((a, b) => b - a);
+
+  const weekOptions = [
+    { value: 'current', label: 'This Week' },
+    { value: 'last', label: 'Last Week' },
+    ...[...Array(52)].map((_, i) => ({
+      value: (i + 1).toString(),
+      label: `Week ${i + 1}`,
+    })),
+  ];
+
   return (
     <div>
+      {/* Header */}
       <div className='flex justify-between items-center mb-6'>
         <div>
           <h1 className='text-3xl font-bold text-gray-900'>Equipment</h1>
@@ -435,10 +346,16 @@ const Equipment = () => {
         </div>
         <div className='flex space-x-3'>
           <button
+            onClick={() => navigate('/equipment/report')}
+            className='btn-secondary'
+          >
+            📊 Report
+          </button>
+          <button
             onClick={() => setShowTemplateModal(true)}
             className='btn-secondary'
           >
-            📋 Templates ({savedTemplates.length})
+            📋 Templates ({templates.length})
           </button>
           <button
             onClick={() => setShowCreateModal(true)}
@@ -449,38 +366,29 @@ const Equipment = () => {
         </div>
       </div>
 
-      {/* Stats Cards */}
+      {/* Stats */}
       <div className='grid grid-cols-1 md:grid-cols-5 gap-6 mb-6'>
-        <div className='card'>
-          <p className='text-sm font-medium text-gray-600'>Total Equipment</p>
-          <p className='text-3xl font-bold text-gray-900 mt-2'>
-            {equipment.length}
-          </p>
-        </div>
-        <div className='card'>
-          <p className='text-sm font-medium text-gray-600'>Created This Week</p>
-          <p className='text-3xl font-bold text-orange-600 mt-2'>
-            {createdThisWeek}
-          </p>
-        </div>
-        <div className='card'>
-          <p className='text-sm font-medium text-gray-600'>Created This Month</p>
-          <p className='text-3xl font-bold text-green-600 mt-2'>
-            {createdThisMonth}
-          </p>
-        </div>
-        <div className='card'>
-          <p className='text-sm font-medium text-gray-600'>Created This Year</p>
-          <p className='text-3xl font-bold text-blue-600 mt-2'>
-            {createdThisYear}
-          </p>
-        </div>
-        <div className='card'>
-          <p className='text-sm font-medium text-gray-600'>Filtered Results</p>
-          <p className='text-3xl font-bold text-purple-600 mt-2'>
-            {filteredEquipment.length}
-          </p>
-        </div>
+        <StatsCard label='Total Equipment' value={stats.total} color='gray' />
+        <StatsCard
+          label='Created This Week'
+          value={stats.thisWeek}
+          color='orange'
+        />
+        <StatsCard
+          label='Created This Month'
+          value={stats.thisMonth}
+          color='green'
+        />
+        <StatsCard
+          label='Created This Year'
+          value={stats.thisYear}
+          color='blue'
+        />
+        <StatsCard
+          label='Filtered Results'
+          value={stats.filtered}
+          color='purple'
+        />
       </div>
 
       {/* Filters */}
@@ -490,11 +398,10 @@ const Equipment = () => {
             {searchTerm && (
               <p className='text-sm text-gray-600'>
                 Searching for:{' '}
-                <span className='font-medium text-gray-900'>"{searchTerm}"</span>
+                <span className='font-medium'>"{searchTerm}"</span>
               </p>
             )}
           </div>
-
           <div className='flex items-center space-x-3'>
             <select
               value={filterWeek}
@@ -502,41 +409,36 @@ const Equipment = () => {
               className='input-field'
             >
               <option value=''>All Weeks</option>
-              <option value='current'>This Week</option>
-              <option value='last'>Last Week</option>
-              {[...Array(52)].map((_, i) => (
-                <option key={i + 1} value={i + 1}>
-                  Week {i + 1}
+              {weekOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
                 </option>
               ))}
             </select>
-
             <select
               value={filterMonth}
               onChange={(e) => setFilterMonth(e.target.value)}
               className='input-field'
             >
               <option value=''>All Months</option>
-              {months.map((month) => (
-                <option key={month.value} value={month.value}>
-                  {month.label}
+              {months.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
                 </option>
               ))}
             </select>
-
             <select
               value={filterYear}
               onChange={(e) => setFilterYear(e.target.value)}
               className='input-field'
             >
               <option value=''>All Years</option>
-              {availableYears.map((year) => (
-                <option key={year} value={year}>
-                  {year}
+              {availableYears.map((y) => (
+                <option key={y} value={y}>
+                  {y}
                 </option>
               ))}
             </select>
-
             {(filterYear || filterMonth || filterWeek) && (
               <button
                 onClick={() => {
@@ -544,44 +446,34 @@ const Equipment = () => {
                   setFilterMonth('');
                   setFilterWeek('');
                 }}
-                className='btn-secondary whitespace-nowrap'
+                className='btn-secondary'
               >
-                Clear Filters
+                Clear
               </button>
             )}
           </div>
         </div>
       </div>
 
+      {/* Content */}
       {loading ? (
         <LoadingSpinner />
       ) : filteredEquipment.length === 0 ? (
-        <div className='card text-center py-12'>
-          <div className='text-6xl mb-4'>🔧</div>
-          <p className='text-xl font-semibold text-gray-900 mb-2'>
-            {equipment.length === 0 ? 'No Equipment Yet' : 'No Results Found'}
-          </p>
-          <p className='text-gray-500 mb-6'>
-            {equipment.length === 0
-              ? 'Create your first equipment by adding parts and colors'
-              : 'Try adjusting your search or filters'}
-          </p>
-          {equipment.length === 0 && (
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className='btn-primary'
-            >
-              + Create Equipment
-            </button>
-          )}
-        </div>
+        <EmptyState
+          icon='🔧'
+          title='No Equipment Yet'
+          message='Create your first equipment'
+          actionLabel='+ Create Equipment'
+          onAction={() => setShowCreateModal(true)}
+          hasItems={equipment.length > 0}
+        />
       ) : (
         <EquipmentTable
           equipment={filteredEquipment}
           onEdit={handleEdit}
           onDelete={handleDelete}
           onViewDetails={handleViewDetails}
-          onSaveAsTemplate={saveAsTemplate}
+          onSaveAsTemplate={handleSaveAsTemplate}
         />
       )}
 
@@ -592,395 +484,227 @@ const Equipment = () => {
         title='Equipment Templates'
         size='lg'
       >
-        <div className='space-y-3'>
-          <p className='text-sm text-gray-600 mb-4'>
-            Templates save parts configurations for quick reuse. Use "Save as Template" from existing equipment to create templates.
-          </p>
-          
-          {templatesLoading ? (
-            <div className='text-center py-8'>
-              <LoadingSpinner />
-            </div>
-          ) : savedTemplates.length === 0 ? (
-            <div className='text-center py-8 bg-gray-50 rounded-lg'>
-              <div className='text-4xl mb-3'>📋</div>
-              <p className='text-gray-500'>
-                No templates saved yet. Create equipment and use "Save as Template" button.
-              </p>
-            </div>
-          ) : (
-            <div className='space-y-2 max-h-96 overflow-y-auto'>
-              {savedTemplates.map((template) => (
-                <div
-                  key={template.id}
-                  className='flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50'
-                >
-                  <div className='flex-1'>
-                    <p className='font-medium text-gray-900'>{template.name}</p>
-                    <p className='text-sm text-gray-500'>
-                      {template.parts_data?.length || 0} parts
-                      {template.category_name && ` • ${template.category_name}`}
-                      {template.brand_name && ` • ${template.brand_name}`}
-                    </p>
-                    {template.description && (
-                      <p className='text-xs text-gray-400 mt-1'>{template.description}</p>
-                    )}
-                  </div>
-                  <div className='flex space-x-2 ml-4'>
-                    <button
-                      onClick={() => loadTemplate(template)}
-                      className='px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 text-sm font-medium'
-                    >
-                      Use Template
-                    </button>
-                    <button
-                      onClick={() => handleDeleteTemplate(template)}
-                      className='px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 text-sm font-medium'
-                    >
-                      Delete
-                    </button>
-                  </div>
+        {templatesLoading ? (
+          <LoadingSpinner />
+        ) : templates.length === 0 ? (
+          <div className='text-center py-8 bg-gray-50 rounded-lg'>
+            <div className='text-4xl mb-3'>📋</div>
+            <p className='text-gray-500'>No templates saved yet.</p>
+          </div>
+        ) : (
+          <div className='space-y-2 max-h-96 overflow-y-auto'>
+            {templates.map((t) => (
+              <div
+                key={t.id}
+                className='flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50'
+              >
+                <div>
+                  <p className='font-medium'>{t.name}</p>
+                  <p className='text-sm text-gray-500'>
+                    {t.parts_data?.length || 0} parts{' '}
+                    {t.brand && `• ${t.brand}`}
+                  </p>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+                <div className='flex space-x-2'>
+                  <button
+                    onClick={() => {
+                      handleTemplateSelect(t.id.toString());
+                      setShowTemplateModal(false);
+                      setShowCreateModal(true);
+                    }}
+                    className='px-3 py-1 bg-blue-100 text-blue-700 rounded text-sm'
+                  >
+                    Use
+                  </button>
+                  <button
+                    onClick={() => handleDeleteTemplate(t)}
+                    className='px-3 py-1 bg-red-100 text-red-700 rounded text-sm'
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </Modal>
 
       {/* Save Template Modal */}
       <Modal
         isOpen={showSaveTemplateModal}
-        onClose={() => {
-          setShowSaveTemplateModal(false);
-          setTemplateName('');
-        }}
+        onClose={() => setShowSaveTemplateModal(false)}
         title='Save as Template'
         size='sm'
       >
         <div className='space-y-4'>
-          <p className='text-sm text-gray-600'>
-            Save this equipment configuration as a reusable template.
-          </p>
-          <div>
-            <label className='block text-sm font-medium text-gray-700 mb-2'>
-              Template Name *
-            </label>
-            <input
-              type='text'
-              value={templateName}
-              onChange={(e) => setTemplateName(e.target.value)}
-              className='input-field'
-              placeholder='Enter template name'
-              autoFocus
-            />
-          </div>
-          <div className='flex justify-end space-x-3 pt-4'>
+          <input
+            type='text'
+            value={templateName}
+            onChange={(e) => setTemplateName(e.target.value)}
+            className='input-field'
+            placeholder='Template name'
+          />
+          <div className='flex justify-end space-x-3'>
             <button
+              onClick={() => setShowSaveTemplateModal(false)}
+              className='btn-secondary'
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirmSaveTemplate}
+              className='btn-primary'
+              disabled={!templateName.trim()}
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Create Modal */}
+      <Modal
+        isOpen={showCreateModal}
+        onClose={() => {
+          setShowCreateModal(false);
+          resetForm();
+        }}
+        title='Create Equipment'
+        size='lg'
+      >
+        <form onSubmit={handleCreate} className='space-y-6'>
+          {/* Template Selector */}
+          <TemplateSelector
+            templates={templates}
+            value={formData.template_id}
+            onChange={handleTemplateSelect}
+          />
+
+          {/* Basic Info */}
+          <div className='grid grid-cols-2 gap-4'>
+            <div>
+              <label className='block text-sm font-medium text-gray-700 mb-2'>
+                Model *
+              </label>
+              <input
+                type='text'
+                value={formData.model}
+                onChange={(e) =>
+                  setFormData({ ...formData, model: e.target.value })
+                }
+                className='input-field'
+                required
+              />
+            </div>
+            <div>
+              <label className='block text-sm font-medium text-gray-700 mb-2'>
+                Serial Number
+              </label>
+              <input
+                type='text'
+                value={formData.serial_number}
+                onChange={(e) =>
+                  setFormData({ ...formData, serial_number: e.target.value })
+                }
+                className='input-field'
+              />
+            </div>
+            <DatalistInput
+              label='Brand'
+              value={formData.brand}
+              onChange={(v) => setFormData({ ...formData, brand: v })}
+              options={brands}
+            />
+            <DatalistInput
+              label='Category'
+              value={formData.category}
+              onChange={(v) => setFormData({ ...formData, category: v })}
+              options={categories}
+            />
+            <div>
+              <label className='block text-sm font-medium text-gray-700 mb-2'>
+                Article ID
+              </label>
+              <input
+                type='text'
+                value={formData.article_id}
+                onChange={(e) =>
+                  setFormData({ ...formData, article_id: e.target.value })
+                }
+                className='input-field'
+              />
+            </div>
+            <div>
+              <label className='block text-sm font-medium text-gray-700 mb-2'>
+                Production Date
+              </label>
+              <input
+                type='date'
+                value={formData.production_date}
+                onChange={(e) =>
+                  setFormData({ ...formData, production_date: e.target.value })
+                }
+                className='input-field'
+              />
+            </div>
+          </div>
+
+          {/* Parts (only if no template) */}
+          {!formData.template_id && (
+            <div>
+              <h3 className='text-lg font-semibold mb-4'>
+                Parts ({formData.parts.length})
+              </h3>
+              <PartSelector
+                parts={parts}
+                onAdd={addPart}
+                existingParts={formData.parts}
+              />
+              <div className='mt-4'>
+                <PartsListTable parts={formData.parts} onRemove={removePart} />
+              </div>
+            </div>
+          )}
+
+          {/* Save as Template Checkbox */}
+          {!formData.template_id && formData.parts.length > 0 && (
+            <label className='flex items-center space-x-2'>
+              <input
+                type='checkbox'
+                checked={saveAsTemplate}
+                onChange={(e) => setSaveAsTemplate(e.target.checked)}
+                className='h-4 w-4 text-blue-600 rounded'
+              />
+              <span className='text-sm text-gray-700'>Save as template</span>
+            </label>
+          )}
+
+          {/* Buttons */}
+          <div className='flex justify-end space-x-3 pt-4 border-t'>
+            <button
+              type='button'
               onClick={() => {
-                setShowSaveTemplateModal(false);
-                setTemplateName('');
+                setShowCreateModal(false);
+                resetForm();
               }}
               className='btn-secondary'
             >
               Cancel
             </button>
             <button
-              onClick={handleSaveTemplate}
+              type='submit'
               className='btn-primary'
-              disabled={!templateName.trim()}
+              disabled={!formData.template_id && formData.parts.length === 0}
             >
-              Save Template
+              {formData.template_id
+                ? 'Create from Template'
+                : `Create (${formData.parts.length} parts)`}
             </button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Create Equipment Modal */}
-      <Modal
-        isOpen={showCreateModal}
-        onClose={() => {
-          setShowCreateModal(false);
-          setCurrentPart({ part_id: '', color_id: '', quantity: 1, notes: '' });
-        }}
-        title='Create New Equipment'
-        size='lg'
-      >
-        <form onSubmit={handleCreate}>
-          <div className='space-y-6'>
-            {/* Basic Information */}
-            <div>
-              <h3 className='text-lg font-semibold text-gray-900 mb-4'>
-                Basic Information
-              </h3>
-              <div className='grid grid-cols-2 gap-4'>
-                <div>
-                  <label className='block text-sm font-medium text-gray-700 mb-2'>
-                    Model Name *
-                  </label>
-                  <input
-                    type='text'
-                    value={formData.model}
-                    onChange={(e) => handleModelChange(e.target.value)}
-                    className='input-field'
-                    placeholder='e.g., Absolute Two Silver'
-                    required
-                  />
-                  {savedTemplates.find(t => t.name.toLowerCase() === formData.model.toLowerCase()) && (
-                    <p className='text-sm text-green-600 mt-1'>
-                      ✓ Template available
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <label className='block text-sm font-medium text-gray-700 mb-2'>
-                    Serial Number (Optional)
-                  </label>
-                  <input
-                    type='text'
-                    value={formData.serial_number}
-                    onChange={(e) =>
-                      setFormData({ ...formData, serial_number: e.target.value })
-                    }
-                    className='input-field'
-                    placeholder='e.g., ABS-2024-001'
-                  />
-                </div>
-                <div>
-                  <label className='block text-sm font-medium text-gray-700 mb-2'>
-                    Category
-                  </label>
-                  <select
-                    value={formData.category_id}
-                    onChange={(e) =>
-                      setFormData({ ...formData, category_id: e.target.value })
-                    }
-                    className='input-field'
-                  >
-                    <option value=''>Select category</option>
-                    {categories.map((cat) => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className='block text-sm font-medium text-gray-700 mb-2'>
-                    Brand
-                  </label>
-                  <select
-                    value={formData.brand_id}
-                    onChange={(e) =>
-                      setFormData({ ...formData, brand_id: e.target.value })
-                    }
-                    className='input-field'
-                  >
-                    <option value=''>Select brand</option>
-                    {brands.map((brand) => (
-                      <option key={brand.id} value={brand.id}>
-                        {brand.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className='block text-sm font-medium text-gray-700 mb-2'>
-                    Year Manufactured
-                  </label>
-                  <input
-                    type='number'
-                    value={formData.year_manufactured}
-                    onChange={(e) =>
-                      setFormData({ ...formData, year_manufactured: e.target.value })
-                    }
-                    className='input-field'
-                    min='1900'
-                    max='2100'
-                  />
-                </div>
-                <div>
-                  <label className='block text-sm font-medium text-gray-700 mb-2'>
-                    Production Date
-                  </label>
-                  <input
-                    type='date'
-                    value={formData.production_date}
-                    onChange={(e) =>
-                      setFormData({ ...formData, production_date: e.target.value })
-                    }
-                    className='input-field'
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Parts Section */}
-            <div>
-              <h3 className='text-lg font-semibold text-gray-900 mb-4'>
-                Add Parts *{' '}
-                <span className='text-sm text-gray-500 font-normal'>
-                  ({formData.parts.length} added)
-                </span>
-              </h3>
-              <div className='bg-gray-50 p-4 rounded-lg mb-4'>
-                <div className='grid grid-cols-4 gap-3 mb-3'>
-                  <select
-                    value={currentPart.part_id}
-                    onChange={(e) => {
-                      setCurrentPart({
-                        ...currentPart,
-                        part_id: e.target.value,
-                        color_id: '',
-                      });
-                    }}
-                    className='input-field'
-                  >
-                    <option value=''>Select part</option>
-                    {parts.map((part) => (
-                      <option key={part.id} value={part.id}>
-                        {part.name}
-                      </option>
-                    ))}
-                  </select>
-
-                  <select
-                    value={currentPart.color_id}
-                    onChange={(e) => {
-                      setCurrentPart({ ...currentPart, color_id: e.target.value });
-                    }}
-                    className='input-field'
-                    disabled={!currentPart.part_id}
-                  >
-                    <option value=''>
-                      {!currentPart.part_id ? 'Select part first' : 'Select color'}
-                    </option>
-                    {currentPart.part_id &&
-                      colors.map((color) => {
-                        const partColor = partsColors.find(
-                          (pc) =>
-                            pc.part_id === parseInt(currentPart.part_id) &&
-                            pc.color_id === color.id
-                        );
-                        const available = partColor ? partColor.quantity : 0;
-                        const isAvailable = partColor && partColor.quantity > 0;
-
-                        return (
-                          <option
-                            key={color.id}
-                            value={color.id}
-                            disabled={!isAvailable}
-                          >
-                            {color.name}{' '}
-                            {isAvailable ? `(${available} available)` : '(Not in stock)'}
-                          </option>
-                        );
-                      })}
-                  </select>
-
-                  <input
-                    type='number'
-                    value={currentPart.quantity}
-                    onChange={(e) =>
-                      setCurrentPart({ ...currentPart, quantity: e.target.value })
-                    }
-                    className='input-field'
-                    placeholder='Qty'
-                    min='1'
-                  />
-
-                  <button type='button' onClick={addPartToList} className='btn-success'>
-                    Add
-                  </button>
-                </div>
-                <input
-                  type='text'
-                  value={currentPart.notes}
-                  onChange={(e) =>
-                    setCurrentPart({ ...currentPart, notes: e.target.value })
-                  }
-                  className='input-field'
-                  placeholder='Notes (optional)'
-                />
-              </div>
-
-              {formData.parts.length > 0 ? (
-                <div className='border rounded-lg overflow-hidden'>
-                  <table className='min-w-full divide-y divide-gray-200'>
-                    <thead className='bg-gray-50'>
-                      <tr>
-                        <th className='px-4 py-2 text-left text-xs font-medium text-gray-500'>
-                          Part
-                        </th>
-                        <th className='px-4 py-2 text-left text-xs font-medium text-gray-500'>
-                          Color
-                        </th>
-                        <th className='px-4 py-2 text-left text-xs font-medium text-gray-500'>
-                          Qty
-                        </th>
-                        <th className='px-4 py-2 text-left text-xs font-medium text-gray-500'>
-                          Notes
-                        </th>
-                        <th className='px-4 py-2 text-right text-xs font-medium text-gray-500'>
-                          Action
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className='bg-white divide-y divide-gray-200'>
-                      {formData.parts.map((part, index) => (
-                        <tr key={index}>
-                          <td className='px-4 py-2 text-sm'>{part.part_name}</td>
-                          <td className='px-4 py-2 text-sm'>{part.color_name}</td>
-                          <td className='px-4 py-2 text-sm'>{part.quantity}</td>
-                          <td className='px-4 py-2 text-sm text-gray-500'>
-                            {part.notes || '-'}
-                          </td>
-                          <td className='px-4 py-2 text-sm text-right'>
-                            <button
-                              type='button'
-                              onClick={() => removePartFromList(index)}
-                              className='text-red-600 hover:text-red-900'
-                            >
-                              Remove
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className='text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300'>
-                  <p className='text-gray-500'>
-                    No parts added yet. Add parts above to continue.
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className='flex justify-end space-x-3 pt-4 border-t'>
-              <button
-                type='button'
-                onClick={() => {
-                  setShowCreateModal(false);
-                  setCurrentPart({ part_id: '', color_id: '', quantity: 1, notes: '' });
-                }}
-                className='btn-secondary'
-              >
-                Cancel
-              </button>
-              <button
-                type='submit'
-                className='btn-primary'
-                disabled={formData.parts.length === 0}
-              >
-                Create Equipment ({formData.parts.length} parts)
-              </button>
-            </div>
           </div>
         </form>
       </Modal>
 
-      {/* Equipment Details Modal */}
+      {/* Details Modal */}
       <Modal
         isOpen={showDetailsModal}
         onClose={() => setShowDetailsModal(false)}
@@ -992,108 +716,64 @@ const Equipment = () => {
             <div className='grid grid-cols-2 gap-4'>
               <div>
                 <p className='text-sm text-gray-600'>Model</p>
-                <p className='text-lg font-semibold'>{selectedEquipment.model}</p>
+                <p className='text-lg font-semibold'>
+                  {selectedEquipment.model}
+                </p>
               </div>
               <div>
-                <p className='text-sm text-gray-600'>Serial Number</p>
+                <p className='text-sm text-gray-600'>Serial</p>
                 <p className='text-lg font-semibold'>
                   {selectedEquipment.serial_number || '-'}
                 </p>
               </div>
               <div>
-                <p className='text-sm text-gray-600'>Category</p>
-                <p className='text-lg font-semibold'>
-                  {selectedEquipment.category_name || '-'}
-                </p>
-              </div>
-              <div>
                 <p className='text-sm text-gray-600'>Brand</p>
                 <p className='text-lg font-semibold'>
-                  {selectedEquipment.brand_name || '-'}
+                  {selectedEquipment.brand || '-'}
                 </p>
               </div>
               <div>
-                <p className='text-sm text-gray-600'>Year Manufactured</p>
+                <p className='text-sm text-gray-600'>Category</p>
                 <p className='text-lg font-semibold'>
-                  {selectedEquipment.year_manufactured || '-'}
+                  {selectedEquipment.category || '-'}
                 </p>
               </div>
               <div>
-                <p className='text-sm text-gray-600'>Created By</p>
+                <p className='text-sm text-gray-600'>Template</p>
                 <p className='text-lg font-semibold'>
-                  {selectedEquipment.created_by_name ||
-                    selectedEquipment.created_by_username ||
-                    '-'}
+                  {selectedEquipment.template_name || '-'}
                 </p>
               </div>
               <div>
-                <p className='text-sm text-gray-600'>Date Created</p>
+                <p className='text-sm text-gray-600'>Created</p>
                 <p className='text-lg font-semibold'>
                   {selectedEquipment.created_at
-                    ? new Date(selectedEquipment.created_at).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric',
-                      })
+                    ? new Date(
+                        selectedEquipment.created_at,
+                      ).toLocaleDateString()
                     : '-'}
                 </p>
               </div>
             </div>
 
-            {selectedEquipment.parts_used && (
+            {selectedEquipment.parts?.length > 0 && (
               <div>
                 <div className='flex justify-between items-center mb-3'>
                   <h3 className='text-lg font-semibold'>Parts Used</h3>
                   <button
-                    type='button'
                     onClick={() => {
                       setShowDetailsModal(false);
-                      saveAsTemplate(selectedEquipment);
+                      handleSaveAsTemplate(selectedEquipment);
                     }}
                     className='btn-secondary text-sm'
                   >
                     💾 Save as Template
                   </button>
                 </div>
-                <div className='border rounded-lg overflow-hidden'>
-                  <table className='min-w-full'>
-                    <thead className='bg-gray-50'>
-                      <tr>
-                        <th className='px-4 py-2 text-left text-xs font-medium text-gray-500'>
-                          Part
-                        </th>
-                        <th className='px-4 py-2 text-left text-xs font-medium text-gray-500'>
-                          Color
-                        </th>
-                        <th className='px-4 py-2 text-left text-xs font-medium text-gray-500'>
-                          Quantity
-                        </th>
-                        <th className='px-4 py-2 text-left text-xs font-medium text-gray-500'>
-                          Notes
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className='bg-white divide-y'>
-                      {(typeof selectedEquipment.parts_used === 'string'
-                        ? JSON.parse(selectedEquipment.parts_used)
-                        : selectedEquipment.parts_used
-                      )
-                        .filter((part) => part && part.part_name)
-                        .map((part, index) => (
-                          <tr key={index}>
-                            <td className='px-4 py-2 text-sm'>{part.part_name}</td>
-                            <td className='px-4 py-2 text-sm'>{part.color_name}</td>
-                            <td className='px-4 py-2 text-sm'>
-                              {part.quantity_needed || part.quantity}
-                            </td>
-                            <td className='px-4 py-2 text-sm text-gray-500'>
-                              {part.notes || '-'}
-                            </td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                </div>
+                <PartsListTable
+                  parts={selectedEquipment.parts}
+                  showRemove={false}
+                />
               </div>
             )}
           </div>

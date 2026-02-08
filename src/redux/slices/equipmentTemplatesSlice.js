@@ -11,7 +11,7 @@ export const fetchTemplates = createAsyncThunk(
     } catch (error) {
       return rejectWithValue(error.response?.data?.error || error.message);
     }
-  }
+  },
 );
 
 export const fetchTemplateById = createAsyncThunk(
@@ -23,7 +23,7 @@ export const fetchTemplateById = createAsyncThunk(
     } catch (error) {
       return rejectWithValue(error.response?.data?.error || error.message);
     }
-  }
+  },
 );
 
 export const createTemplate = createAsyncThunk(
@@ -35,7 +35,7 @@ export const createTemplate = createAsyncThunk(
     } catch (error) {
       return rejectWithValue(error.response?.data?.error || error.message);
     }
-  }
+  },
 );
 
 export const createTemplateFromEquipment = createAsyncThunk(
@@ -47,7 +47,23 @@ export const createTemplateFromEquipment = createAsyncThunk(
     } catch (error) {
       return rejectWithValue(error.response?.data?.error || error.message);
     }
-  }
+  },
+);
+
+// NEW: Create equipment from template
+export const createEquipmentFromTemplate = createAsyncThunk(
+  'equipmentTemplates/createEquipment',
+  async ({ templateId, data }, { rejectWithValue }) => {
+    try {
+      const response = await equipmentTemplatesAPI.createEquipment(
+        templateId,
+        data,
+      );
+      return response.data.data;
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.error || error.message);
+    }
+  },
 );
 
 export const updateTemplate = createAsyncThunk(
@@ -59,7 +75,7 @@ export const updateTemplate = createAsyncThunk(
     } catch (error) {
       return rejectWithValue(error.response?.data?.error || error.message);
     }
-  }
+  },
 );
 
 export const deleteTemplate = createAsyncThunk(
@@ -71,7 +87,7 @@ export const deleteTemplate = createAsyncThunk(
     } catch (error) {
       return rejectWithValue(error.response?.data?.error || error.message);
     }
-  }
+  },
 );
 
 const equipmentTemplatesSlice = createSlice({
@@ -144,6 +160,18 @@ const equipmentTemplatesSlice = createSlice({
         state.loading = false;
         state.error = action.payload;
       })
+      // Create equipment from template
+      .addCase(createEquipmentFromTemplate.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(createEquipmentFromTemplate.fulfilled, (state) => {
+        state.loading = false;
+      })
+      .addCase(createEquipmentFromTemplate.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
       // Update template
       .addCase(updateTemplate.pending, (state) => {
         state.loading = true;
@@ -176,5 +204,6 @@ const equipmentTemplatesSlice = createSlice({
   },
 });
 
-export const { clearCurrentTemplate, clearError } = equipmentTemplatesSlice.actions;
+export const { clearCurrentTemplate, clearError } =
+  equipmentTemplatesSlice.actions;
 export default equipmentTemplatesSlice.reducer;

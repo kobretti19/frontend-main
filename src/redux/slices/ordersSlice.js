@@ -10,17 +10,20 @@ export const fetchOrders = createAsyncThunk('orders/fetchAll', async () => {
   return data.data;
 });
 
-export const fetchMyOrders = createAsyncThunk('orders/fetchMy', async () => {
-  const { data } = await ordersAPI.getMyOrders();
-  return data.data;
-});
+export const fetchOrderById = createAsyncThunk(
+  'orders/fetchById',
+  async (id) => {
+    const { data } = await ordersAPI.getById(id);
+    return data.data;
+  },
+);
 
 export const fetchOrderStats = createAsyncThunk(
   'orders/fetchStats',
   async () => {
     const { data } = await ordersAPI.getStats();
     return data.data;
-  }
+  },
 );
 
 export const createOrder = createAsyncThunk(
@@ -28,19 +31,22 @@ export const createOrder = createAsyncThunk(
   async (orderData) => {
     const { data } = await ordersAPI.create(orderData);
     return data.data;
-  }
+  },
 );
 
-/**
- * ✅ FIXED: supports delivery and partial_delivered statuses
- */
+export const updateOrder = createAsyncThunk(
+  'orders/update',
+  async ({ id, data: orderData }) => {
+    const { data } = await ordersAPI.update(id, orderData);
+    return data.data;
+  },
+);
+
 export const updateOrderStatus = createAsyncThunk(
   'orders/updateStatus',
   async ({ id, status, notes, items }, { rejectWithValue }) => {
     try {
-      // Send items for both 'delivered' and 'partial_delivered' statuses
-      const isDeliveryStatus =
-        status === 'delivered' || status === 'partial_delivered';
+      const isDeliveryStatus = status === 'delivered' || status === 'partial';
 
       await ordersAPI.updateStatus(id, {
         status,
@@ -52,7 +58,7 @@ export const updateOrderStatus = createAsyncThunk(
     } catch (err) {
       return rejectWithValue(err.response?.data || err.message);
     }
-  }
+  },
 );
 
 export const deleteOrder = createAsyncThunk('orders/delete', async (id) => {
@@ -68,17 +74,25 @@ const ordersSlice = createSlice({
   name: 'orders',
   initialState: {
     items: [],
+    currentOrder: null,
     stats: null,
     loading: false,
     error: null,
   },
-  reducers: {},
+  reducers: {
+    clearCurrentOrder: (state) => {
+      state.currentOrder = null;
+    },
+    clearError: (state) => {
+      state.error = null;
+    },
+  },
   extraReducers: (builder) => {
     builder
-
       /* FETCH ORDERS */
       .addCase(fetchOrders.pending, (state) => {
         state.loading = true;
+        state.error = null;
       })
       .addCase(fetchOrders.fulfilled, (state, action) => {
         state.loading = false;
@@ -89,9 +103,17 @@ const ordersSlice = createSlice({
         state.error = action.error.message;
       })
 
-      /* FETCH MY ORDERS */
-      .addCase(fetchMyOrders.fulfilled, (state, action) => {
-        state.items = action.payload;
+      /* FETCH ORDER BY ID */
+      .addCase(fetchOrderById.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(fetchOrderById.fulfilled, (state, action) => {
+        state.loading = false;
+        state.currentOrder = action.payload;
+      })
+      .addCase(fetchOrderById.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.error.message;
       })
 
       /* STATS */
@@ -104,26 +126,33 @@ const ordersSlice = createSlice({
         state.items.unshift(action.payload);
       })
 
-      /* ✅ UPDATE STATUS + ITEMS */
+      /* UPDATE */
+      .addCase(updateOrder.fulfilled, (state, action) => {
+        const index = state.items.findIndex(
+          (item) => item.id === action.payload.id,
+        );
+        if (index !== -1) {
+          state.items[index] = action.payload;
+        }
+      })
+
+      /* UPDATE STATUS */
       .addCase(updateOrderStatus.fulfilled, (state, action) => {
         const { id, status, items } = action.payload;
-
         const order = state.items.find((o) => o.id === id);
         if (!order) return;
 
         order.status = status;
 
-        // If delivered/partial_delivered & items were updated, refresh summary values
-        const isDeliveryStatus =
-          status === 'delivered' || status === 'partial_delivered';
+        const isDeliveryStatus = status === 'delivered' || status === 'partial';
         if (isDeliveryStatus && Array.isArray(items)) {
           order.total_delivered = items.reduce(
             (sum, i) => sum + Number(i.quantity_delivered || 0),
-            0
+            0,
           );
           order.total_backorder = items.reduce(
             (sum, i) => sum + Number(i.quantity_backorder || 0),
-            0
+            0,
           );
         }
       })
@@ -135,4 +164,5 @@ const ordersSlice = createSlice({
   },
 });
 
+export const { clearCurrentOrder, clearError } = ordersSlice.actions;
 export default ordersSlice.reducer;
