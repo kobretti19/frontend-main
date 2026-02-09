@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import Select from 'react-select';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   fetchStockMovements,
@@ -200,6 +201,11 @@ const StockMovements = () => {
     const status = getStockStatusKey(l);
     return status === 'out_of_stock';
   }).length;
+
+  const partOptions = parts.map((p) => ({
+    value: p.id,
+    label: `${p.name} ${p.color ? `(${p.color})` : ''} - Current: ${p.quantity || 0}`,
+  }));
 
   return (
     <div>
@@ -666,22 +672,21 @@ const StockMovements = () => {
             <label className='block text-sm font-medium text-gray-700 mb-2'>
               Part
             </label>
-            <select
-              value={addStockData.part_id}
-              onChange={(e) =>
-                setAddStockData({ ...addStockData, part_id: e.target.value })
+            <Select
+              options={partOptions}
+              value={partOptions.find(
+                (opt) => opt.value === addStockData.part_id,
+              )}
+              onChange={(selectedOption) =>
+                setAddStockData({
+                  ...addStockData,
+                  part_id: selectedOption ? selectedOption.value : '',
+                })
               }
-              className='input-field'
-              required
-            >
-              <option value=''>Select part</option>
-              {parts.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} {p.color ? `(${p.color})` : ''} - Current:{' '}
-                  {p.quantity || 0}
-                </option>
-              ))}
-            </select>
+              placeholder='Search for a part...'
+              isClearable
+              classNamePrefix='react-select'
+            />
           </div>
           <div>
             <label className='block text-sm font-medium text-gray-700 mb-2'>
@@ -740,29 +745,39 @@ const StockMovements = () => {
             <label className='block text-sm font-medium text-gray-700 mb-2'>
               Part
             </label>
-            <select
-              value={adjustStockData.part_id}
-              onChange={(e) => {
-                const part = parts.find(
-                  (p) => p.id === parseInt(e.target.value),
-                );
+            <Select
+              classNamePrefix='react-select'
+              options={partOptions}
+              value={
+                partOptions.find(
+                  (opt) => opt.value === parseInt(adjustStockData.part_id),
+                ) || null
+              }
+              onChange={(selectedOption) => {
+                const part = selectedOption
+                  ? selectedOption.originalPart
+                  : null;
                 setAdjustStockData({
                   ...adjustStockData,
-                  part_id: e.target.value,
+                  part_id: selectedOption
+                    ? selectedOption.value.toString()
+                    : '',
                   quantity: part ? part.quantity || 0 : '',
                 });
               }}
-              className='input-field'
+              placeholder='Select or search part...'
+              isClearable
               required
-            >
-              <option value=''>Select part</option>
-              {parts.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} {p.color ? `(${p.color})` : ''} - Current:{' '}
-                  {p.quantity || 0}
-                </option>
-              ))}
-            </select>
+              // This part helps it look like your other inputs
+              styles={{
+                control: (base) => ({
+                  ...base,
+                  borderRadius: '0.375rem', // Match Tailwind rounded-md
+                  borderColor: '#D1D5DB', // Match Tailwind gray-300
+                  minHeight: '42px',
+                }),
+              }}
+            />
           </div>
           <div>
             <label className='block text-sm font-medium text-gray-700 mb-2'>

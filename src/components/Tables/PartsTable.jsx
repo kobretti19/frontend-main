@@ -25,6 +25,7 @@ const PartsTable = ({ parts, onEdit, onDelete }) => {
     min_stock_level: '',
   });
 
+  console.log(parts, 'parts');
   const handleEdit = (part) => {
     setSelectedPart(part);
     setFormData({
@@ -105,7 +106,7 @@ const PartsTable = ({ parts, onEdit, onDelete }) => {
                 Supplier
               </th>
               <th className='px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider'>
-                SKU
+                Order Number
               </th>
               <th className='px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider'>
                 Stock

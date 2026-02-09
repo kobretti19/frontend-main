@@ -1,10 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import {
-  partsAPI,
-  partsColorsAPI,
-  equipmentAPI,
-  ordersAPI,
-} from '../../api/api';
+import { partsAPI, equipmentAPI, ordersAPI } from '../../api/api';
 
 const apiMap = {
   part: partsAPI,

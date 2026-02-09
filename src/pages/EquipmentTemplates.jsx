@@ -199,15 +199,6 @@ const EquipmentTemplates = () => {
     });
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return '-';
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  };
-
   const uniqueCategories = new Set(
     templates.filter((t) => t.category).map((t) => t.category),
   ).size;
