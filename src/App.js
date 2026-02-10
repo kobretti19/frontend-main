@@ -21,6 +21,7 @@ import Orders from './pages/Orders';
 import StockMovements from './pages/StockMovements';
 import EquipmentTemplates from './pages/EquipmentTemplates';
 import EquipmentReport from './pages/EquipmentReport';
+import OrderPartsReport from './pages/OrderPartsReport';
 
 function App() {
   return (
@@ -54,6 +55,7 @@ function App() {
                     element={<EquipmentReport />}
                   />
                   <Route path='orders' element={<Orders />} />
+                  <Route path='/orders/parts-report' element={<OrderPartsReport />} />
                   <Route path='stock-movements' element={<StockMovements />} />
                 </Route>
 
