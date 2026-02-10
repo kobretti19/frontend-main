@@ -20,7 +20,7 @@ import { useSearch } from '../context/SearchContext';
 import { useNavigate } from 'react-router-dom';
 
 const Orders = () => {
-  const navigate = useNavigate()
+  const navigate = useNavigate();
   const dispatch = useDispatch();
   const { searchTerm } = useSearch();
 
@@ -172,114 +172,121 @@ const Orders = () => {
 
       setSelectedOrder(fullOrder);
 
-      const isPartial = order.status === 'partial';
-
       setDeliveryItems(
         fullOrder.items?.map((item) => {
-          const ordered = item.total_quantity || 0;
+          // Use quantity_ordered (20) and quantity_delivered (16)
+          // from your backend API response
+          const ordered = item.quantity_ordered || 0;
           const alreadyDelivered = item.quantity_delivered || 0;
-          const currentBackorder = item.quantity_backorder || 0;
 
           return {
             id: item.id,
-            part_id: item.part_id,
             part_name: item.part_name,
-            part_color: item.part_color,
             quantity_ordered: ordered,
             quantity_already_delivered: alreadyDelivered,
-            quantity_delivered: isPartial ? alreadyDelivered : ordered,
-            quantity_backorder: isPartial ? currentBackorder : 0,
-            quantity_receiving: isPartial ? 0 : ordered,
-            item_status: item.item_status || 'delivered',
-            unit_price: item.unit_price,
-            notes: item.notes || '',
+            // Start 'receiving' at 0 so user can add new stock
+            quantity_receiving: 0,
+            // Current total state
+            quantity_delivered: alreadyDelivered,
+            quantity_backorder:
+              item.quantity_backorder || ordered - alreadyDelivered,
+            item_status: item.item_status || 'partial',
           };
         }) || [],
       );
-      setDeliveryNotes('');
       setShowDeliveryModal(true);
     } catch (err) {
-      alert(`Failed to load order: ${err.message || err}`);
+      alert(`Failed to load order: ${err.message}`);
     }
   };
 
-const handleReceivingChange = (index, receivingQty) => {
-  const updated = [...deliveryItems];
-  const item = updated[index];
-  const ordered = item.quantity_ordered || 0;
-  const alreadyDelivered = item.quantity_already_delivered || 0;
+  console.log(orderDetails, 'orderDetails');
 
-  receivingQty = Math.max(0, parseInt(receivingQty) || 0);
+  const handleReceivingChange = (index, receivingQty) => {
+    const updated = [...deliveryItems];
+    const item = updated[index];
 
-  const totalDelivered = alreadyDelivered + receivingQty;
-  const remaining = ordered - totalDelivered;
+    // 1. Get current values
+    const qtyIn = Math.max(0, parseInt(receivingQty) || 0);
+    const alreadyDelivered = item.quantity_already_delivered || 0;
+    const ordered = item.quantity_ordered; // This is the original 49 or 45
 
-  item.quantity_receiving = receivingQty;
-  item.quantity_delivered = totalDelivered;
-  item.quantity_backorder = Math.max(0, remaining);
+    // 2. Calculate totals
+    const totalDelivered = alreadyDelivered + qtyIn;
+    const remaining = ordered - totalDelivered;
 
-  // Auto-calculate item status (unless cancelled)
-  if (item.item_status !== 'cancelled') {
-    if (totalDelivered === 0) {
-      item.item_status = 'backorder';
-    } else if (totalDelivered >= ordered) {
-      item.item_status = 'delivered';
-    } else if (remaining > 0) {
-      item.item_status = 'partial';
-    } else {
-      item.item_status = 'delivered';
+    item.quantity_receiving = qtyIn;
+    item.quantity_delivered = totalDelivered;
+
+    // FIX: Force backorder to be a number so it shows in the table
+    item.quantity_backorder = Math.max(0, remaining);
+
+    // 3. Item Level Status
+    if (item.item_status !== 'cancelled') {
+      item.item_status = totalDelivered >= ordered ? 'delivered' : 'partial';
     }
-  }
 
-  setDeliveryItems(updated);
-};
+    setDeliveryItems(updated);
+  };
 
-const handleItemStatusChange = (index, newStatus) => {
-  const updated = [...deliveryItems];
-  const item = updated[index];
+  const handleItemStatusChange = (index, newStatus) => {
+    const updated = [...deliveryItems];
+    const item = updated[index];
 
-  item.item_status = newStatus;
+    item.item_status = newStatus;
 
-  // If cancelled, zero out receiving
-  if (newStatus === 'cancelled') {
-    item.quantity_receiving = 0;
-    item.quantity_backorder = 0;
-  }
+    // If cancelled, zero out receiving
+    if (newStatus === 'cancelled') {
+      item.quantity_receiving = 0;
+      item.quantity_backorder = 0;
+    }
 
-  setDeliveryItems(updated);
-};
+    setDeliveryItems(updated);
+  };
 
-const handleDeliverySubmit = async (e) => {
-  e.preventDefault();
+  const handleDeliverySubmit = async (e) => {
+    e.preventDefault();
 
-  try {
-    // Send receiving quantity and item status
-    const itemsPayload = deliveryItems.map((item) => ({
-      id: item.id,
-      quantity_delivered: parseInt(item.quantity_receiving) || 0,
-      item_status: item.item_status,
-    }));
+    // 1. CALCULATE IF ANYTHING IS STILL MISSING
+    // Check if (Already Delivered + Currently Receiving) < Original Ordered Qty
+    const stillHasMissingItems = deliveryItems.some((item) => {
+      const currentTotal =
+        (item.quantity_already_delivered || 0) +
+        (parseInt(item.quantity_receiving) || 0);
+      return currentTotal < item.quantity_ordered;
+    });
 
-    await dispatch(
-      updateOrderStatus({
-        id: selectedOrder.id,
-        status: 'partial', // Backend will recalculate the correct status
-        notes: deliveryNotes,
-        items: itemsPayload,
-      })
-    ).unwrap();
+    try {
+      const itemsPayload = deliveryItems.map((item) => {
+        const totalForThisItem =
+          (item.quantity_already_delivered || 0) +
+          (parseInt(item.quantity_receiving) || 0);
 
-    setShowDeliveryModal(false);
-    setSelectedOrder(null);
-    setDeliveryItems([]);
-    dispatch(fetchOrders());
-    dispatch(fetchOrderStats());
-    dispatch(fetchParts());
-  } catch (err) {
-    alert(`Failed to process delivery: ${err.message || err}`);
-  }
-};
+        return {
+          id: item.id,
+          quantity_delivered: parseInt(item.quantity_receiving) || 0,
+          // Individual item status
+          item_status:
+            totalForThisItem >= item.quantity_ordered ? 'delivered' : 'partial',
+        };
+      });
 
+      await dispatch(
+        updateOrderStatus({
+          id: selectedOrder.id,
+          // THE FIX: If any item is still missing, the WHOLE order is 'partial'
+          status: stillHasMissingItems ? 'partial' : 'delivered',
+          notes: deliveryNotes,
+          items: itemsPayload,
+        }),
+      ).unwrap();
+
+      setShowDeliveryModal(false);
+      dispatch(fetchOrders());
+    } catch (err) {
+      alert(`Failed: ${err.message}`);
+    }
+  };
 
   const handleStatusChange = async (order, newStatus) => {
     try {
@@ -364,12 +371,12 @@ const handleDeliverySubmit = async (e) => {
           <p className='text-gray-600 mt-1'>Manage supplier orders</p>
         </div>
         <button
-      onClick={() => navigate('/orders/parts-report')}
-      className='btn-secondary'
-    >
-      📊 Parts Report
-    </button>
-        
+          onClick={() => navigate('/orders/parts-report')}
+          className='btn-secondary'
+        >
+          📊 Parts Report
+        </button>
+
         <button
           onClick={() => setShowCreateModal(true)}
           className='btn-primary'
@@ -811,189 +818,267 @@ const handleDeliverySubmit = async (e) => {
         </form>
       </Modal>
 
-      
       {/* Delivery Modal */}
-    <Modal
-  isOpen={showDeliveryModal}
-  onClose={() => {
-    setShowDeliveryModal(false);
-    setSelectedOrder(null);
-  }}
-  title={`Receive Delivery - ${selectedOrder?.order_number || '#' + selectedOrder?.id}`}
-  size='xl'
->
-  <form onSubmit={handleDeliverySubmit} className='space-y-4'>
-    <div className='bg-blue-50 p-3 rounded-lg text-sm text-blue-800'>
-      Enter the quantity received for each item. Each item's status is calculated automatically.
-    </div>
-
-    <div className='border rounded-lg overflow-hidden'>
-      <table className='min-w-full'>
-        <thead className='bg-gray-50'>
-          <tr>
-            <th className='px-3 py-2 text-left text-xs font-medium text-gray-500'>Part</th>
-            <th className='px-3 py-2 text-center text-xs font-medium text-gray-500'>Ordered</th>
-            <th className='px-3 py-2 text-center text-xs font-medium text-gray-500'>Already</th>
-            <th className='px-3 py-2 text-center text-xs font-medium text-gray-500'>Receiving</th>
-            <th className='px-3 py-2 text-center text-xs font-medium text-gray-500'>Total</th>
-            <th className='px-3 py-2 text-center text-xs font-medium text-gray-500'>Backorder</th>
-            <th className='px-3 py-2 text-center text-xs font-medium text-gray-500'>Status</th>
-          </tr>
-        </thead>
-        <tbody className='divide-y'>
-          {deliveryItems.map((item, index) => {
-            const isFullyDelivered = (item.quantity_already_delivered || 0) >= item.quantity_ordered;
-            const willBeFullyDelivered = (item.quantity_delivered || 0) >= item.quantity_ordered;
-
-            return (
-              <React.Fragment key={item.id}>
-                <tr className={`${isFullyDelivered ? 'bg-green-50' : ''} ${willBeFullyDelivered && !isFullyDelivered ? 'bg-green-100' : ''}`}>
-                  <td className='px-3 py-2'>
-                    <p className='text-sm font-medium'>{item.part_name}</p>
-                    {item.part_color && <p className='text-xs text-gray-500'>{item.part_color}</p>}
-                  </td>
-                  <td className='px-3 py-2 text-center text-sm font-medium'>
-                    {item.quantity_ordered}
-                  </td>
-                  <td className='px-3 py-2 text-center text-sm text-green-600'>
-                    {item.quantity_already_delivered || 0}
-                  </td>
-                  <td className='px-3 py-2 text-center'>
-                    {isFullyDelivered ? (
-                      <span className='text-green-600 text-sm'>✓ Complete</span>
-                    ) : (
-                      <input
-                        type='number'
-                        min='0'
-                        value={item.quantity_receiving || 0}
-                        onChange={(e) => handleReceivingChange(index, e.target.value)}
-                        className='w-20 input-field text-center'
-                        disabled={item.item_status === 'cancelled'}
-                      />
-                    )}
-                  </td>
-                  <td className='px-3 py-2 text-center'>
-                    <span className={`text-sm font-medium ${willBeFullyDelivered ? 'text-green-600' : 'text-blue-600'}`}>
-                      {item.quantity_delivered || 0}
-                    </span>
-                    {willBeFullyDelivered && (item.quantity_delivered || 0) > item.quantity_ordered && (
-                      <span className='text-xs text-orange-500 block'>
-                        +{(item.quantity_delivered || 0) - item.quantity_ordered} extra
-                      </span>
-                    )}
-                  </td>
-                  <td className='px-3 py-2 text-center'>
-                    <span className={item.quantity_backorder > 0 ? 'text-orange-600 font-medium' : 'text-gray-400'}>
-                      {item.quantity_backorder || 0}
-                    </span>
-                  </td>
-                  <td className='px-3 py-2 text-center'>
-                    <select
-                      value={item.item_status}
-                      onChange={(e) => handleItemStatusChange(index, e.target.value)}
-                      className={`text-xs px-2 py-1 rounded-full border-0 cursor-pointer ${getItemStatusColor(item.item_status)}`}
-                      disabled={isFullyDelivered}
-                    >
-                      <option value='delivered'>✓ Delivered</option>
-                      <option value='partial'>◐ Partial</option>
-                      <option value='backorder'>⏳ Backorder</option>
-                      <option value='cancelled'>✕ Cancelled</option>
-                    </select>
-                  </td>
-                </tr>
-                {/* Item notes row */}
-                {item.notes && (
-                  <tr className='bg-blue-50'>
-                    <td colSpan='7' className='px-3 py-1 text-xs text-blue-700'>
-                      📝 {item.notes}
-                    </td>
-                  </tr>
-                )}
-              </React.Fragment>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-
-    {/* Summary */}
-    <div className='grid grid-cols-5 gap-4 bg-gray-50 p-4 rounded-lg'>
-      <div className='text-center'>
-        <p className='text-sm text-gray-600'>Ordered</p>
-        <p className='text-xl font-bold'>
-          {deliveryItems.reduce((s, i) => s + Number(i.quantity_ordered || 0), 0)}
-        </p>
-      </div>
-      <div className='text-center'>
-        <p className='text-sm text-gray-600'>Already</p>
-        <p className='text-xl font-bold text-blue-600'>
-          {deliveryItems.reduce((s, i) => s + Number(i.quantity_already_delivered || 0), 0)}
-        </p>
-      </div>
-      <div className='text-center'>
-        <p className='text-sm text-gray-600'>Receiving</p>
-        <p className='text-xl font-bold text-green-600'>
-          {deliveryItems.reduce((s, i) => s + Number(i.quantity_receiving || 0), 0)}
-        </p>
-      </div>
-      <div className='text-center'>
-        <p className='text-sm text-gray-600'>Total</p>
-        <p className='text-xl font-bold text-purple-600'>
-          {deliveryItems.reduce((s, i) => s + Number(i.quantity_delivered || 0), 0)}
-        </p>
-      </div>
-      <div className='text-center'>
-        <p className='text-sm text-gray-600'>Backorder</p>
-        <p className='text-xl font-bold text-orange-600'>
-          {deliveryItems.reduce((s, i) => s + Number(i.quantity_backorder || 0), 0)}
-        </p>
-      </div>
-    </div>
-
-    {/* Status Summary */}
-    <div className='flex gap-2 flex-wrap'>
-      <span className='text-xs text-gray-500'>Items:</span>
-      <span className='px-2 py-1 text-xs rounded-full bg-green-100 text-green-800'>
-        {deliveryItems.filter((i) => i.item_status === 'delivered').length} Delivered
-      </span>
-      <span className='px-2 py-1 text-xs rounded-full bg-orange-100 text-orange-800'>
-        {deliveryItems.filter((i) => i.item_status === 'partial').length} Partial
-      </span>
-      <span className='px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-800'>
-        {deliveryItems.filter((i) => i.item_status === 'backorder').length} Backorder
-      </span>
-      <span className='px-2 py-1 text-xs rounded-full bg-red-100 text-red-800'>
-        {deliveryItems.filter((i) => i.item_status === 'cancelled').length} Cancelled
-      </span>
-    </div>
-
-    <div>
-      <label className='block text-sm font-medium text-gray-700 mb-1'>
-        Delivery Notes
-      </label>
-      <textarea
-        value={deliveryNotes}
-        onChange={(e) => setDeliveryNotes(e.target.value)}
-        className='input-field'
-        rows='2'
-        placeholder='Notes about this delivery...'
-      />
-    </div>
-
-    <div className='flex justify-end space-x-3 pt-4 border-t'>
-      <button
-        type='button'
-        onClick={() => setShowDeliveryModal(false)}
-        className='btn-secondary'
+      <Modal
+        isOpen={showDeliveryModal}
+        onClose={() => {
+          setShowDeliveryModal(false);
+          setSelectedOrder(null);
+        }}
+        title={`Receive Delivery - ${selectedOrder?.order_number || '#' + selectedOrder?.id}`}
+        size='xl'
       >
-        Cancel
-      </button>
-      <button type='submit' className='btn-primary'>
-        Confirm Delivery
-      </button>
-    </div>
-  </form>
-</Modal>
+        <form onSubmit={handleDeliverySubmit} className='space-y-4'>
+          <div className='bg-blue-50 p-3 rounded-lg text-sm text-blue-800'>
+            Enter the quantity received for each item. Each item's status is
+            calculated automatically.
+          </div>
+
+          <div className='border rounded-lg overflow-hidden'>
+            <table className='min-w-full'>
+              <thead className='bg-gray-50'>
+                <tr>
+                  <th className='px-3 py-2 text-left text-xs font-medium text-gray-500'>
+                    Part
+                  </th>
+                  <th className='px-3 py-2 text-center text-xs font-medium text-gray-500'>
+                    Ordered
+                  </th>
+                  <th className='px-3 py-2 text-center text-xs font-medium text-gray-500'>
+                    Already
+                  </th>
+                  <th className='px-3 py-2 text-center text-xs font-medium text-gray-500'>
+                    Receiving
+                  </th>
+                  <th className='px-3 py-2 text-center text-xs font-medium text-gray-500'>
+                    Total
+                  </th>
+                  <th className='px-3 py-2 text-center text-xs font-medium text-gray-500'>
+                    Backorder
+                  </th>
+                  <th className='px-3 py-2 text-center text-xs font-medium text-gray-500'>
+                    Status
+                  </th>
+                </tr>
+              </thead>
+              <tbody className='divide-y'>
+                {deliveryItems.map((item, index) => {
+                  const isFullyDelivered =
+                    (item.quantity_already_delivered || 0) >=
+                    item.quantity_ordered;
+                  const willBeFullyDelivered =
+                    (item.quantity_delivered || 0) >= item.quantity_ordered;
+
+                  return (
+                    <React.Fragment key={item.id}>
+                      <tr
+                        className={`${isFullyDelivered ? 'bg-green-50' : ''} ${willBeFullyDelivered && !isFullyDelivered ? 'bg-green-100' : ''}`}
+                      >
+                        <td className='px-3 py-2'>
+                          <p className='text-sm font-medium'>
+                            {item.part_name}
+                          </p>
+                          {item.part_color && (
+                            <p className='text-xs text-gray-500'>
+                              {item.part_color}
+                            </p>
+                          )}
+                        </td>
+                        <td className='px-3 py-2 text-center text-sm font-medium'>
+                          {item.quantity_ordered}
+                        </td>
+                        <td className='px-3 py-2 text-center text-sm text-green-600'>
+                          {item.quantity_already_delivered || 0}
+                        </td>
+                        <td className='px-3 py-2 text-center'>
+                          {isFullyDelivered ? (
+                            <span className='text-green-600 text-sm'>
+                              ✓ Complete
+                            </span>
+                          ) : (
+                            <input
+                              type='number'
+                              min='0'
+                              value={item.quantity_receiving || 0}
+                              onChange={(e) =>
+                                handleReceivingChange(index, e.target.value)
+                              }
+                              className='w-20 input-field text-center'
+                              disabled={item.item_status === 'cancelled'}
+                            />
+                          )}
+                        </td>
+                        <td className='px-3 py-2 text-center'>
+                          <span
+                            className={`text-sm font-medium ${willBeFullyDelivered ? 'text-green-600' : 'text-blue-600'}`}
+                          >
+                            {item.quantity_delivered || 0}
+                          </span>
+                          {willBeFullyDelivered &&
+                            (item.quantity_delivered || 0) >
+                              item.quantity_ordered && (
+                              <span className='text-xs text-orange-500 block'>
+                                +
+                                {(item.quantity_delivered || 0) -
+                                  item.quantity_ordered}{' '}
+                                extra
+                              </span>
+                            )}
+                        </td>
+                        <td className='px-3 py-2 text-center text-sm'>
+                          <span
+                            className={
+                              item.quantity_backorder > 0
+                                ? 'text-orange-600 font-bold'
+                                : 'text-gray-400'
+                            }
+                          >
+                            {/* If backorder is 0, show 0. If it's 14, show 14. */}
+                            {item.quantity_backorder !== undefined
+                              ? item.quantity_backorder
+                              : '-'}
+                          </span>
+                        </td>
+                        <td className='px-3 py-2 text-center'>
+                          <select
+                            value={item.item_status}
+                            onChange={(e) =>
+                              handleItemStatusChange(index, e.target.value)
+                            }
+                            className={`text-xs px-2 py-1 rounded-full border-0 cursor-pointer ${getItemStatusColor(item.item_status)}`}
+                            disabled={isFullyDelivered}
+                          >
+                            <option value='delivered'>✓ Delivered</option>
+                            <option value='partial'>◐ Partial</option>
+                            <option value='backorder'>⏳ Backorder</option>
+                            <option value='cancelled'>✕ Cancelled</option>
+                          </select>
+                        </td>
+                      </tr>
+                      {/* Item notes row */}
+                      {item.notes && (
+                        <tr className='bg-blue-50'>
+                          <td
+                            colSpan='7'
+                            className='px-3 py-1 text-xs text-blue-700'
+                          >
+                            📝 {item.notes}
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Summary */}
+          <div className='grid grid-cols-5 gap-4 bg-gray-50 p-4 rounded-lg'>
+            <div className='text-center'>
+              <p className='text-sm text-gray-600'>Ordered</p>
+              <p className='text-xl font-bold'>
+                {deliveryItems.reduce(
+                  (s, i) => s + Number(i.quantity_ordered || 0),
+                  0,
+                )}
+              </p>
+            </div>
+            <div className='text-center'>
+              <p className='text-sm text-gray-600'>Already</p>
+              <p className='text-xl font-bold text-blue-600'>
+                {deliveryItems.reduce(
+                  (s, i) => s + Number(i.quantity_already_delivered || 0),
+                  0,
+                )}
+              </p>
+            </div>
+            <div className='text-center'>
+              <p className='text-sm text-gray-600'>Receiving</p>
+              <p className='text-xl font-bold text-green-600'>
+                {deliveryItems.reduce(
+                  (s, i) => s + Number(i.quantity_receiving || 0),
+                  0,
+                )}
+              </p>
+            </div>
+            <div className='text-center'>
+              <p className='text-sm text-gray-600'>Total</p>
+              <p className='text-xl font-bold text-purple-600'>
+                {deliveryItems.reduce(
+                  (s, i) => s + Number(i.quantity_delivered || 0),
+                  0,
+                )}
+              </p>
+            </div>
+            <div className='text-center'>
+              <p className='text-sm text-gray-600'>Backorder</p>
+              <p className='text-xl font-bold text-orange-600'>
+                {deliveryItems.reduce(
+                  (s, i) => s + Number(i.quantity_backorder || 0),
+                  0,
+                )}
+              </p>
+            </div>
+          </div>
+
+          {/* Status Summary */}
+          <div className='flex gap-2 flex-wrap'>
+            <span className='text-xs text-gray-500'>Items:</span>
+            <span className='px-2 py-1 text-xs rounded-full bg-green-100 text-green-800'>
+              {
+                deliveryItems.filter((i) => i.item_status === 'delivered')
+                  .length
+              }{' '}
+              Delivered
+            </span>
+            <span className='px-2 py-1 text-xs rounded-full bg-orange-100 text-orange-800'>
+              {deliveryItems.filter((i) => i.item_status === 'partial').length}{' '}
+              Partial
+            </span>
+            <span className='px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-800'>
+              {
+                deliveryItems.filter((i) => i.item_status === 'backorder')
+                  .length
+              }{' '}
+              Backorder
+            </span>
+            <span className='px-2 py-1 text-xs rounded-full bg-red-100 text-red-800'>
+              {
+                deliveryItems.filter((i) => i.item_status === 'cancelled')
+                  .length
+              }{' '}
+              Cancelled
+            </span>
+          </div>
+
+          <div>
+            <label className='block text-sm font-medium text-gray-700 mb-1'>
+              Delivery Notes
+            </label>
+            <textarea
+              value={deliveryNotes}
+              onChange={(e) => setDeliveryNotes(e.target.value)}
+              className='input-field'
+              rows='2'
+              placeholder='Notes about this delivery...'
+            />
+          </div>
+
+          <div className='flex justify-end space-x-3 pt-4 border-t'>
+            <button
+              type='button'
+              onClick={() => setShowDeliveryModal(false)}
+              className='btn-secondary'
+            >
+              Cancel
+            </button>
+            <button type='submit' className='btn-primary'>
+              Confirm Delivery
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       {/* View Modal */}
       <Modal
@@ -1067,7 +1152,7 @@ const handleDeliverySubmit = async (e) => {
                           )}
                         </td>
                         <td className='px-3 py-2 text-center text-sm'>
-                          {item.total_quantity}
+                          {item.quantity_ordered}
                         </td>
                         <td className='px-3 py-2 text-center text-sm text-green-600'>
                           {item.quantity_delivered || 0}
@@ -1083,9 +1168,9 @@ const handleDeliverySubmit = async (e) => {
                         </td>
                         <td className='px-3 py-2 text-center'>
                           <span
-                            className={`px-2 py-1 text-xs rounded-full ${getItemStatusColor(item.item_status)}`}
+                            className={`px-2 py-1 text-xs rounded-full ${getItemStatusColor(item.status)}`}
                           >
-                            {formatStatus(item.item_status)}
+                            {formatStatus(item.status)}
                           </span>
                         </td>
                       </tr>

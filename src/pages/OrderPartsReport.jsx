@@ -14,8 +14,12 @@ const OrderPartsReport = () => {
   const [totals, setTotals] = useState({});
   const [backorderItems, setBackorderItems] = useState([]);
   const [backorderTotals, setBackorderTotals] = useState({});
+  const [suppliers, setSuppliers] = useState([]);
   const [activeTab, setActiveTab] = useState('items');
-  const [filterStatus, setFilterStatus] = useState('');
+
+  // Multi-select filters
+  const [filterStatuses, setFilterStatuses] = useState([]); // Array for multi-select
+  const [filterSuppliers, setFilterSuppliers] = useState([]); // Array for multi-select
 
   useEffect(() => {
     loadData();
@@ -33,6 +37,11 @@ const OrderPartsReport = () => {
         setItems(summaryRes.data.data.items || []);
         setParts(summaryRes.data.data.parts || []);
         setTotals(summaryRes.data.data.totals || {});
+        const allSuppliers = [
+          ...(summaryRes.data.data.suppliers || []),
+          ...(backorderRes.data.suppliers || []),
+        ];
+        setSuppliers([...new Set(allSuppliers)].sort());
       }
 
       if (backorderRes.data.success) {
@@ -46,38 +55,99 @@ const OrderPartsReport = () => {
     }
   };
 
-  // Filter items
+  // Toggle status filter
+  const toggleStatus = (status) => {
+    setFilterStatuses((prev) =>
+      prev.includes(status)
+        ? prev.filter((s) => s !== status)
+        : [...prev, status],
+    );
+  };
+
+  // Toggle supplier filter
+  const toggleSupplier = (supplier) => {
+    setFilterSuppliers((prev) =>
+      prev.includes(supplier)
+        ? prev.filter((s) => s !== supplier)
+        : [...prev, supplier],
+    );
+  };
+
+  // Filter items - multi-select status and supplier
   const filteredItems = items.filter((item) => {
     const matchesSearch =
       item.part_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.part_color?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.order_number?.toLowerCase().includes(searchTerm.toLowerCase());
+      item.order_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.supplier?.toLowerCase().includes(searchTerm.toLowerCase());
 
     if (!matchesSearch) return false;
 
-    // Filter by item_status instead of order_status
-    if (filterStatus && item.item_status !== filterStatus) return false;
+    // Multi-select status filter (if any selected, item must match one of them)
+    if (
+      filterStatuses.length > 0 &&
+      !filterStatuses.includes(item.item_status)
+    ) {
+      return false;
+    }
+
+    // Multi-select supplier filter
+    if (
+      filterSuppliers.length > 0 &&
+      !filterSuppliers.includes(item.supplier)
+    ) {
+      return false;
+    }
 
     return true;
   });
 
   // Filter parts
   const filteredParts = parts.filter((part) => {
-    return (
+    const matchesSearch =
       part.part_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       part.part_color?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      part.sku?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+      part.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      part.supplier?.toLowerCase().includes(searchTerm.toLowerCase());
+
+    if (!matchesSearch) return false;
+
+    if (
+      filterSuppliers.length > 0 &&
+      !filterSuppliers.includes(part.supplier)
+    ) {
+      return false;
+    }
+
+    return true;
   });
 
   // Filter backorder
   const filteredBackorder = backorderItems.filter((item) => {
-    return (
+    const matchesSearch =
       item.part_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.part_color?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.order_number?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+      item.order_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.supplier?.toLowerCase().includes(searchTerm.toLowerCase());
+
+    if (!matchesSearch) return false;
+
+    if (
+      filterStatuses.length > 0 &&
+      !filterStatuses.includes(item.item_status)
+    ) {
+      return false;
+    }
+
+    if (
+      filterSuppliers.length > 0 &&
+      !filterSuppliers.includes(item.supplier)
+    ) {
+      return false;
+    }
+
+    return true;
   });
 
   const formatDate = (dateString) => {
@@ -85,14 +155,11 @@ const OrderPartsReport = () => {
     return new Date(dateString).toLocaleDateString('de-CH');
   };
 
-  // Updated to include both order and item statuses
   const getStatusColor = (status) => {
     const colors = {
-      // Order statuses
       draft: 'bg-gray-100 text-gray-800',
       pending: 'bg-yellow-100 text-yellow-800',
       ordered: 'bg-purple-100 text-purple-800',
-      // Item statuses
       delivered: 'bg-green-100 text-green-800',
       partial: 'bg-orange-100 text-orange-800',
       backorder: 'bg-red-100 text-red-800',
@@ -105,9 +172,39 @@ const OrderPartsReport = () => {
     window.print();
   };
 
-  if (loading) return <LoadingSpinner />;
+  const clearFilters = () => {
+    setFilterStatuses([]);
+    setFilterSuppliers([]);
+  };
 
-  console.log(filteredItems,"filteredOrderPartsReport")
+  const hasActiveFilters =
+    filterStatuses.length > 0 || filterSuppliers.length > 0;
+
+  // Status options for filter
+  const statusOptions = [
+    {
+      value: 'pending',
+      label: 'Pending',
+      color: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+    },
+    {
+      value: 'partial',
+      label: 'Partial',
+      color: 'bg-orange-100 text-orange-800 border-orange-300',
+    },
+    {
+      value: 'delivered',
+      label: 'Delivered',
+      color: 'bg-green-100 text-green-800 border-green-300',
+    },
+    {
+      value: 'cancelled',
+      label: 'Cancelled',
+      color: 'bg-gray-100 text-gray-800 border-gray-300',
+    },
+  ];
+
+  if (loading) return <LoadingSpinner />;
 
   return (
     <div className='min-h-screen bg-gray-100'>
@@ -122,7 +219,9 @@ const OrderPartsReport = () => {
               >
                 ← Back to Orders
               </button>
-              <h1 className='text-xl font-bold text-gray-900'>Order Parts Report</h1>
+              <h1 className='text-xl font-bold text-gray-900'>
+                Order Parts Report
+              </h1>
             </div>
             <button onClick={handlePrint} className='btn-primary'>
               🖨️ Print
@@ -134,13 +233,29 @@ const OrderPartsReport = () => {
       <div className='max-w-7xl mx-auto py-6 px-4'>
         {/* Stats */}
         <div className='grid grid-cols-2 md:grid-cols-5 gap-4 mb-6'>
-          <StatsCard label='Total Items' value={totals.total_items || 0} color='gray' />
-          <StatsCard label='Total Ordered' value={totals.total_ordered || 0} color='blue' />
-          <StatsCard label='Delivered' value={totals.total_delivered || 0} color='green' />
-          <StatsCard label='Backorder' value={totals.total_backorder || 0} color='red' />
           <StatsCard
-            label='Total Value'
-            value={`CHF ${(totals.total_value || 0).toFixed(2)}`}
+            label='Total Items'
+            value={totals.total_items || 0}
+            color='gray'
+          />
+          <StatsCard
+            label='Total Ordered'
+            value={totals.total_ordered || 0}
+            color='blue'
+          />
+          <StatsCard
+            label='Delivered'
+            value={totals.total_delivered || 0}
+            color='green'
+          />
+          <StatsCard
+            label='Backorder'
+            value={totals.total_backorder || 0}
+            color='red'
+          />
+          <StatsCard
+            label='Suppliers'
+            value={suppliers.length}
             color='purple'
           />
         </div>
@@ -177,39 +292,92 @@ const OrderPartsReport = () => {
               }`}
             >
               Backorder
-              {backorderItems.length > 0 && (
+              {filteredBackorder.length > 0 && (
                 <span className='ml-2 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full'>
-                  {backorderItems.length}
+                  {filteredBackorder.length}
                 </span>
               )}
             </button>
           </nav>
         </div>
 
-        {/* Filters */}
-        {activeTab === 'items' && (
-          <div className='card mb-6 print:hidden'>
-            <div className='flex items-center gap-4'>
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className='input-field'
-              >
-                <option value=''>All Status</option>
-                <option value='pending'>Pending</option>
-                <option value='delivered'>Delivered</option>
-                <option value='partial'>Partial</option>
-                <option value='backorder'>Backorder</option>
-                <option value='cancelled'>Cancelled</option>
-              </select>
-              {filterStatus && (
-                <button onClick={() => setFilterStatus('')} className='btn-secondary'>
-                  Clear
-                </button>
-              )}
+        {/* Multi-Select Filters */}
+        <div className='card mb-6 print:hidden'>
+          <div className='space-y-4'>
+            {/* Status Filters - Checkbox Pills */}
+            <div>
+              <label className='block text-sm font-medium text-gray-700 mb-2'>
+                Filter by Status (select multiple)
+              </label>
+              <div className='flex flex-wrap gap-2'>
+                {statusOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => toggleStatus(option.value)}
+                    className={`px-3 py-1.5 text-sm rounded-full border-2 transition-all ${
+                      filterStatuses.includes(option.value)
+                        ? `${option.color} border-current font-medium`
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    {filterStatuses.includes(option.value) && '✓ '}
+                    {option.label}
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {/* Supplier Filters - Checkbox Pills */}
+            {suppliers.length > 0 && (
+              <div>
+                <label className='block text-sm font-medium text-gray-700 mb-2'>
+                  Filter by Supplier (select multiple)
+                </label>
+                <div className='flex flex-wrap gap-2'>
+                  {suppliers.map((supplier) => (
+                    <button
+                      key={supplier}
+                      onClick={() => toggleSupplier(supplier)}
+                      className={`px-3 py-1.5 text-sm rounded-full border-2 transition-all ${
+                        filterSuppliers.includes(supplier)
+                          ? 'bg-purple-100 text-purple-800 border-purple-300 font-medium'
+                          : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      {filterSuppliers.includes(supplier) && '✓ '}
+                      {supplier}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Active Filters Summary & Clear */}
+            {hasActiveFilters && (
+              <div className='flex items-center justify-between pt-2 border-t'>
+                <div className='text-sm text-gray-600'>
+                  <span className='font-medium'>Active filters:</span>
+                  {filterStatuses.length > 0 && (
+                    <span className='ml-2'>
+                      Status: {filterStatuses.join(', ')}
+                    </span>
+                  )}
+                  {filterSuppliers.length > 0 && (
+                    <span className='ml-2'>
+                      | Suppliers: {filterSuppliers.join(', ')}
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={clearFilters}
+                  className='btn-secondary text-sm'
+                >
+                  Clear All Filters
+                </button>
+              </div>
+            )}
           </div>
-        )}
+        </div>
 
         {/* All Order Items Tab */}
         {activeTab === 'items' && (
@@ -218,7 +386,11 @@ const OrderPartsReport = () => {
               <EmptyState
                 icon='📦'
                 title='No Items'
-                message='No order items found'
+                message={
+                  hasActiveFilters
+                    ? 'No items match your filters'
+                    : 'No order items found'
+                }
                 hasItems={items.length > 0}
               />
             ) : (
@@ -226,40 +398,43 @@ const OrderPartsReport = () => {
                 <table className='min-w-full divide-y divide-gray-200'>
                   <thead className='bg-gray-50'>
                     <tr>
-                      <th className='px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
+                      <th className='px-3 py-3 text-left text-[0.7rem] font-medium text-gray-500 uppercase'>
                         Order
                       </th>
-                      <th className='px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
+                      <th className='px-3 py-3 text-left text-[0.7rem] font-medium text-gray-500 uppercase'>
                         Date
                       </th>
-                      <th className='px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
+                      <th className='px-3 py-3 text-left text-[0.7rem] font-medium text-gray-500 uppercase'>
                         Part
                       </th>
-                      <th className='px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
+                      <th className='px-3 py-3 text-left text-[0.7rem] font-medium text-gray-500 uppercase'>
                         SKU
                       </th>
-                      <th className='px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase'>
+                      <th className='px-3 py-3 text-left text-[0.7rem] font-medium text-gray-500 uppercase'>
+                        Supplier
+                      </th>
+                      <th className='px-3 py-3 text-center text-[0.7rem] font-medium text-gray-500 uppercase'>
                         Ordered
                       </th>
-                      <th className='px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase'>
+                      <th className='px-3 py-3 text-center text-[0.7rem] font-medium text-gray-500 uppercase'>
                         Delivered
                       </th>
-                      <th className='px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase'>
+                      <th className='px-3 py-3 text-center text-[0.7rem] font-medium text-gray-500 uppercase'>
                         Backorder
                       </th>
-                      <th className='px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase'>
+                      <th className='px-3 py-3 text-center text-[0.7rem] font-medium text-gray-500 uppercase'>
                         Stock
                       </th>
-                      <th className='px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
+                      <th className='px-3 py-3 text-left text-[0.7rem] font-medium text-gray-500 uppercase'>
                         Item Status
                       </th>
-                      <th className='px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
+                      <th className='px-3 py-3 text-left text-[0.7rem] font-medium text-gray-500 uppercase'>
                         Order Status
                       </th>
-                      <th className='px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
+                      <th className='px-3 py-3 text-left text-[0.7rem] font-medium text-gray-500 uppercase'>
                         By
                       </th>
-                      <th className='px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
+                      <th className='px-3 py-3 text-left text-[0.7rem] font-medium text-gray-500 uppercase'>
                         Notes
                       </th>
                     </tr>
@@ -269,30 +444,37 @@ const OrderPartsReport = () => {
                       <tr
                         key={`${item.order_item_id}-${index}`}
                         className={`hover:bg-gray-50 ${
-                          item.quantity_backorder > 0 ? 'bg-red-50' : ''
-                        } ${item.item_status === 'delivered' ? 'bg-green-50' : ''}`}
+                          item.item_status === 'backorder' ? 'bg-red-50' : ''
+                        } ${item.item_status === 'delivered' ? 'bg-green-50' : ''} ${
+                          item.item_status === 'partial' ? 'bg-orange-50' : ''
+                        }`}
                       >
-                        <td className='px-3 py-2 text-sm font-medium text-blue-600'>
+                        <td className='px-3 py-2 text-[0.7rem] font-medium text-blue-600'>
                           {item.order_number}
                         </td>
-                        <td className='px-3 py-2 text-sm text-gray-600'>
+                        <td className='px-3 py-2 text-[0.7rem] text-gray-600'>
                           {formatDate(item.order_date)}
                         </td>
                         <td className='px-3 py-2'>
-                          <p className='text-sm font-medium text-gray-900'>
+                          <p className='text-[0.7rem] font-medium text-gray-900'>
                             {item.part_name}
                           </p>
                           {item.part_color && (
-                            <p className='text-xs text-gray-500'>{item.part_color}</p>
+                            <p className='text-xs text-gray-500'>
+                              {item.part_color}
+                            </p>
                           )}
                         </td>
-                        <td className='px-3 py-2 text-sm text-gray-500 font-mono'>
+                        <td className='px-3 py-2 text-[0.7rem] text-gray-500 font-mono'>
                           {item.sku || '-'}
                         </td>
-                        <td className='px-3 py-2 text-center text-sm font-medium text-blue-600'>
+                        <td className='px-3 py-2 text-[0.7rem] text-gray-600'>
+                          {item.supplier || '-'}
+                        </td>
+                        <td className='px-3 py-2 text-center text-[0.7rem] font-medium text-blue-600'>
                           {item.quantity_ordered || 0}
                         </td>
-                        <td className='px-3 py-2 text-center text-sm font-medium text-green-600'>
+                        <td className='px-3 py-2 text-center text-[0.7rem] font-medium text-green-600'>
                           {item.quantity_delivered || 0}
                         </td>
                         <td className='px-3 py-2 text-center'>
@@ -306,7 +488,7 @@ const OrderPartsReport = () => {
                         </td>
                         <td className='px-3 py-2 text-center'>
                           <span
-                            className={`text-sm font-medium ${
+                            className={`text-[0.7rem] font-medium ${
                               item.current_stock <= (item.min_stock_level || 5)
                                 ? 'text-red-600'
                                 : 'text-green-600'
@@ -315,30 +497,24 @@ const OrderPartsReport = () => {
                             {item.current_stock || 0}
                           </span>
                         </td>
-                        {/* Item Status - Shows delivered/partial/backorder per item */}
                         <td className='px-3 py-2'>
                           <span
-                            className={`px-2 py-1 text-xs rounded-full ${getStatusColor(
-                              item.item_status
-                            )}`}
+                            className={`px-2 py-1 text-xs rounded-full ${getStatusColor(item.item_status)}`}
                           >
                             {item.item_status || '-'}
                           </span>
                         </td>
-                        {/* Order Status - Shows overall order status */}
                         <td className='px-3 py-2'>
                           <span
-                            className={`px-2 py-1 text-xs rounded-full ${getStatusColor(
-                              item.order_status
-                            )}`}
+                            className={`px-2 py-1 text-xs rounded-full ${getStatusColor(item.order_status)}`}
                           >
                             {item.order_status || '-'}
                           </span>
                         </td>
-                        <td className='px-3 py-2 text-sm text-gray-600'>
+                        <td className='px-3 py-2 text-[0.7rem] text-gray-600'>
                           {item.ordered_by || '-'}
                         </td>
-                        <td className='px-3 py-2 text-sm text-gray-500 max-w-xs truncate'>
+                        <td className='px-3 py-2 text-[0.7rem] text-gray-500 max-w-xs truncate'>
                           {item.item_notes || '-'}
                         </td>
                       </tr>
@@ -346,25 +522,25 @@ const OrderPartsReport = () => {
                   </tbody>
                   <tfoot className='bg-gray-100'>
                     <tr className='font-semibold'>
-                      <td colSpan='4' className='px-3 py-2 text-right'>
+                      <td colSpan='5' className='px-3 py-2 text-right'>
                         Totals:
                       </td>
                       <td className='px-3 py-2 text-center text-blue-600'>
                         {filteredItems.reduce(
                           (sum, i) => sum + (i.quantity_ordered || 0),
-                          0
+                          0,
                         )}
                       </td>
                       <td className='px-3 py-2 text-center text-green-600'>
                         {filteredItems.reduce(
                           (sum, i) => sum + (i.quantity_delivered || 0),
-                          0
+                          0,
                         )}
                       </td>
                       <td className='px-3 py-2 text-center text-red-600'>
                         {filteredItems.reduce(
                           (sum, i) => sum + (i.quantity_backorder || 0),
-                          0
+                          0,
                         )}
                       </td>
                       <td colSpan='5'></td>
@@ -383,7 +559,11 @@ const OrderPartsReport = () => {
               <EmptyState
                 icon='📦'
                 title='No Parts'
-                message='No parts found'
+                message={
+                  hasActiveFilters
+                    ? 'No parts match your filters'
+                    : 'No parts found'
+                }
                 hasItems={parts.length > 0}
               />
             ) : (
@@ -395,6 +575,9 @@ const OrderPartsReport = () => {
                     </th>
                     <th className='px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
                       SKU
+                    </th>
+                    <th className='px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
+                      Supplier
                     </th>
                     <th className='px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase'>
                       Stock
@@ -417,24 +600,27 @@ const OrderPartsReport = () => {
                   {filteredParts.map((part) => (
                     <tr
                       key={part.part_id}
-                      className={`hover:bg-gray-50 ${
-                        part.total_backorder > 0 ? 'bg-red-50' : ''
-                      }`}
+                      className={`hover:bg-gray-50 ${part.total_backorder > 0 ? 'bg-red-50' : ''}`}
                     >
                       <td className='px-4 py-3'>
-                        <p className='text-sm font-medium text-gray-900'>
+                        <p className='text-[0.7rem] font-medium text-gray-900'>
                           {part.part_name}
                         </p>
                         {part.part_color && (
-                          <p className='text-xs text-gray-500'>{part.part_color}</p>
+                          <p className='text-xs text-gray-500'>
+                            {part.part_color}
+                          </p>
                         )}
                       </td>
-                      <td className='px-4 py-3 text-sm text-gray-500 font-mono'>
+                      <td className='px-4 py-3 text-[0.7rem] text-gray-500 font-mono'>
                         {part.sku || '-'}
+                      </td>
+                      <td className='px-4 py-3 text-[0.7rem] text-gray-600'>
+                        {part.supplier || '-'}
                       </td>
                       <td className='px-4 py-3 text-center'>
                         <span
-                          className={`text-sm font-medium ${
+                          className={`text-[0.7rem] font-medium ${
                             part.current_stock <= (part.min_stock_level || 5)
                               ? 'text-red-600'
                               : 'text-green-600'
@@ -443,10 +629,10 @@ const OrderPartsReport = () => {
                           {part.current_stock || 0}
                         </span>
                       </td>
-                      <td className='px-4 py-3 text-center text-sm font-medium text-blue-600'>
+                      <td className='px-4 py-3 text-center text-[0.7rem] font-medium text-blue-600'>
                         {part.total_ordered || 0}
                       </td>
-                      <td className='px-4 py-3 text-center text-sm font-medium text-green-600'>
+                      <td className='px-4 py-3 text-center text-[0.7rem] font-medium text-green-600'>
                         {part.total_delivered || 0}
                       </td>
                       <td className='px-4 py-3 text-center'>
@@ -458,7 +644,7 @@ const OrderPartsReport = () => {
                           <span className='text-gray-400'>-</span>
                         )}
                       </td>
-                      <td className='px-4 py-3 text-center text-sm text-gray-600'>
+                      <td className='px-4 py-3 text-center text-[0.7rem] text-gray-600'>
                         {part.order_count || 0}
                       </td>
                     </tr>
@@ -466,25 +652,25 @@ const OrderPartsReport = () => {
                 </tbody>
                 <tfoot className='bg-gray-100'>
                   <tr className='font-semibold'>
-                    <td colSpan='3' className='px-4 py-2 text-right'>
+                    <td colSpan='4' className='px-4 py-2 text-right'>
                       Totals:
                     </td>
                     <td className='px-4 py-2 text-center text-blue-600'>
                       {filteredParts.reduce(
                         (sum, p) => sum + (p.total_ordered || 0),
-                        0
+                        0,
                       )}
                     </td>
                     <td className='px-4 py-2 text-center text-green-600'>
                       {filteredParts.reduce(
                         (sum, p) => sum + (p.total_delivered || 0),
-                        0
+                        0,
                       )}
                     </td>
                     <td className='px-4 py-2 text-center text-red-600'>
                       {filteredParts.reduce(
                         (sum, p) => sum + (p.total_backorder || 0),
-                        0
+                        0,
                       )}
                     </td>
                     <td></td>
@@ -502,44 +688,51 @@ const OrderPartsReport = () => {
               <EmptyState
                 icon='✅'
                 title='No Backorders'
-                message='All items delivered'
+                message={
+                  hasActiveFilters
+                    ? 'No backorders match your filters'
+                    : 'All items delivered'
+                }
                 hasItems={false}
               />
             ) : (
               <table className='min-w-full divide-y divide-gray-200'>
                 <thead className='bg-gray-50'>
                   <tr>
-                    <th className='px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
+                    <th className='px-3 py-3 text-left text-[0.7rem] font-medium text-gray-500 uppercase'>
                       Order
                     </th>
-                    <th className='px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
+                    <th className='px-3 py-3 text-left text-[0.7rem] font-medium text-gray-500 uppercase'>
                       Date
                     </th>
-                    <th className='px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
+                    <th className='px-3 py-3 text-left text-[0.7rem] font-medium text-gray-500 uppercase'>
                       Part
                     </th>
-                    <th className='px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
+                    <th className='px-3 py-3 text-left text-[0.7rem] font-medium text-gray-500 uppercase'>
                       SKU
                     </th>
-                    <th className='px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase'>
+                    <th className='px-3 py-3 text-left text-[0.7rem] font-medium text-gray-500 uppercase'>
+                      Supplier
+                    </th>
+                    <th className='px-3 py-3 text-center text-[0.7rem] font-medium text-gray-500 uppercase'>
                       Ordered
                     </th>
-                    <th className='px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase'>
+                    <th className='px-3 py-3 text-center text-[0.7rem] font-medium text-gray-500 uppercase'>
                       Delivered
                     </th>
-                    <th className='px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase'>
+                    <th className='px-3 py-3 text-center text-[0.7rem] font-medium text-gray-500 uppercase'>
                       Backorder
                     </th>
-                    <th className='px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase'>
+                    <th className='px-3 py-3 text-center text-[0.7rem] font-medium text-gray-500 uppercase'>
                       Stock
                     </th>
-                    <th className='px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
+                    <th className='px-3 py-3 text-left text-[0.7rem] font-medium text-gray-500 uppercase'>
                       Status
                     </th>
-                    <th className='px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
+                    <th className='px-3 py-3 text-left text-[0.7rem] font-medium text-gray-500 uppercase'>
                       By
                     </th>
-                    <th className='px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
+                    <th className='px-3 py-3 text-left text-[0.7rem] font-medium text-gray-500 uppercase'>
                       Notes
                     </th>
                   </tr>
@@ -551,28 +744,33 @@ const OrderPartsReport = () => {
                       className='hover:bg-gray-50 bg-red-50'
                     >
                       <td className='px-3 py-2'>
-                        <span className='text-sm font-medium text-blue-600'>
+                        <span className='text-[0.7rem] font-medium text-blue-600'>
                           {item.order_number}
                         </span>
                       </td>
-                      <td className='px-3 py-2 text-sm text-gray-600'>
+                      <td className='px-3 py-2 text-[0.7rem] text-gray-600'>
                         {formatDate(item.order_date)}
                       </td>
                       <td className='px-3 py-2'>
-                        <p className='text-sm font-medium text-gray-900'>
+                        <p className='text-[0.7rem] font-medium text-gray-900'>
                           {item.part_name}
                         </p>
                         {item.part_color && (
-                          <p className='text-xs text-gray-500'>{item.part_color}</p>
+                          <p className='text-xs text-gray-500'>
+                            {item.part_color}
+                          </p>
                         )}
                       </td>
-                      <td className='px-3 py-2 text-sm text-gray-500 font-mono'>
+                      <td className='px-3 py-2 text-[0.7rem] text-gray-500 font-mono'>
                         {item.sku || '-'}
                       </td>
-                      <td className='px-3 py-2 text-center text-sm'>
+                      <td className='px-3 py-2 text-[0.7rem] text-gray-600'>
+                        {item.supplier || '-'}
+                      </td>
+                      <td className='px-3 py-2 text-center text-[0.7rem]'>
                         {item.quantity_ordered}
                       </td>
-                      <td className='px-3 py-2 text-center text-sm text-green-600'>
+                      <td className='px-3 py-2 text-center text-[0.7rem] text-green-600'>
                         {item.quantity_delivered}
                       </td>
                       <td className='px-3 py-2 text-center'>
@@ -580,22 +778,20 @@ const OrderPartsReport = () => {
                           {item.quantity_backorder}
                         </span>
                       </td>
-                      <td className='px-3 py-2 text-center text-sm'>
+                      <td className='px-3 py-2 text-center text-[0.7rem]'>
                         {item.current_stock || 0}
                       </td>
                       <td className='px-3 py-2'>
                         <span
-                          className={`px-2 py-1 text-xs rounded-full ${getStatusColor(
-                            item.item_status
-                          )}`}
+                          className={`px-2 py-1 text-xs rounded-full ${getStatusColor(item.item_status)}`}
                         >
                           {item.item_status || '-'}
                         </span>
                       </td>
-                      <td className='px-3 py-2 text-sm text-gray-600'>
+                      <td className='px-3 py-2 text-[0.7rem] text-gray-600'>
                         {item.ordered_by || '-'}
                       </td>
-                      <td className='px-3 py-2 text-sm text-gray-500 max-w-xs truncate'>
+                      <td className='px-3 py-2 text-[0.7rem] text-gray-500 max-w-xs truncate'>
                         {item.item_notes || '-'}
                       </td>
                     </tr>
@@ -603,25 +799,25 @@ const OrderPartsReport = () => {
                 </tbody>
                 <tfoot className='bg-gray-100'>
                   <tr className='font-semibold'>
-                    <td colSpan='4' className='px-3 py-2 text-right'>
+                    <td colSpan='5' className='px-3 py-2 text-right'>
                       Totals:
                     </td>
                     <td className='px-3 py-2 text-center'>
                       {filteredBackorder.reduce(
                         (sum, i) => sum + (i.quantity_ordered || 0),
-                        0
+                        0,
                       )}
                     </td>
                     <td className='px-3 py-2 text-center text-green-600'>
                       {filteredBackorder.reduce(
                         (sum, i) => sum + (i.quantity_delivered || 0),
-                        0
+                        0,
                       )}
                     </td>
                     <td className='px-3 py-2 text-center text-red-600'>
                       {filteredBackorder.reduce(
                         (sum, i) => sum + (i.quantity_backorder || 0),
-                        0
+                        0,
                       )}
                     </td>
                     <td colSpan='4'></td>
