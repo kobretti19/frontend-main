@@ -768,12 +768,12 @@ const StockMovements = () => {
               placeholder='Select or search part...'
               isClearable
               required
-              // This part helps it look like your other inputs
+              
               styles={{
                 control: (base) => ({
                   ...base,
-                  borderRadius: '0.375rem', // Match Tailwind rounded-md
-                  borderColor: '#D1D5DB', // Match Tailwind gray-300
+                  borderRadius: '0.375rem', 
+                  borderColor: '#D1D5DB', 
                   minHeight: '42px',
                 }),
               }}

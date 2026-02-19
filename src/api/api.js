@@ -102,6 +102,8 @@ export const ordersAPI = {
   update: (id, data) => api.put(`/orders/${id}`, data),
   updateStatus: (id, data) => api.put(`/orders/${id}/status`, data),
   delete: (id) => api.delete(`/orders/${id}`),
+  addItem: (orderId, itemData) => api.post(`/orders/${orderId}/items`, itemData),
+  deleteItem: (itemId) => api.delete(`/orders/item/${itemId}`),
 };
 
 // Stock API

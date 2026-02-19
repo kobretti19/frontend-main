@@ -13,7 +13,7 @@ const OrderPartsReport = () => {
   const [parts, setParts] = useState([]);
   const [totals, setTotals] = useState({});
   const [backorderItems, setBackorderItems] = useState([]);
-  const [backorderTotals, setBackorderTotals] = useState({});
+  const [, setBackorderTotals] = useState({});
   const [suppliers, setSuppliers] = useState([]);
   const [activeTab, setActiveTab] = useState('items');
 
@@ -154,6 +154,8 @@ const OrderPartsReport = () => {
     if (!dateString) return '-';
     return new Date(dateString).toLocaleDateString('de-CH');
   };
+
+  console.log(filteredBackorder,"filteredBackorder")
 
   const getStatusColor = (status) => {
     const colors = {
@@ -791,9 +793,14 @@ const OrderPartsReport = () => {
                       <td className='px-3 py-2 text-[0.7rem] text-gray-600'>
                         {item.ordered_by || '-'}
                       </td>
-                      <td className='px-3 py-2 text-[0.7rem] text-gray-500 max-w-xs truncate'>
-                        {item.item_notes || '-'}
-                      </td>
+                     <td className='px-3 py-2 text-[0.7rem] text-gray-500 max-w-xs truncate'>
+                      {item.status_history?.length > 0 
+                        ? item.status_history.map((note, i) => (
+                            <div className='flex flex-wrap flex-row' key={i}><span >{note.notes}{i < item.status_history.length - 1 ? ', ' : ''}</span>
+                            <span>{item?.item_notes}</span></div>
+                          )) 
+                        : '-'}
+                    </td>
                     </tr>
                   ))}
                 </tbody>
